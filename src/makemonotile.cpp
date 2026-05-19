@@ -484,7 +484,9 @@ int main(int argc, char* argv[]) {
 #ifndef MONOTILE_VISUAL
     std::cout
         << "Executable is not built with raylib, so no output is shown. This "
-           "is the default since raylib is a fairly large download.\n";
+           "is the default since raylib is a fairly large download.\n"
+           "To enable this functionality, pass in -DMONOTILE_VISUAL=ON when"
+           " configuring the build directory\n";
 #else
     s32 width = 800;
     s32 height = 800;
