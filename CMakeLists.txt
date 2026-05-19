@@ -7,20 +7,18 @@ set(CMAKE_CXX_STANDARD 26)
 
 add_compile_options(-w "$<$<CONFIG:release>:-O3;-march=native>")
 
-include_directories(include external/eigen-5.0.1 external/kdtree
-                    external/highfive)
+include_directories(include external/eigen-5.0.1 external/kdtree)
 
-# Adding Raylib
-message(STATUS "Found GSL: ${GSL_FOUND}")
-message(STATUS "GSL library path: ${GSL_LIBRARIES}")
 find_package(OpenMP)
+if(${OpenMP_Found})
+  message("Found OpenMP")
+endif()
 find_package(BLAS COMPONENTS openmp)
 message("Found BLAS libraries ${BLAS_LIBRARIES}")
 if(BLAS_FOUND)
   set(EIGEN_USE_BLAS)
 endif()
 
-# add_executable(couplings src/couplingmaker.cpp)
 add_executable(makemonotile src/makemonotile.cpp)
 
 option(MONOTILE_VISUAL "Compile with Raylib" OFF)
@@ -38,7 +36,6 @@ elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
 else()
   message(STATUS "LTO is not supported: ${output}")
 endif()
-# find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(HDF5 REQUIRED COMPONENTS C HL)
 
 set_property(
@@ -47,10 +44,10 @@ set_property(
 set_property(TARGET makemonotile
              PROPERTY LINK_OPTIONS "$<$<CONFIG:debug>:-fsanitize=address>")
 
-# target_link_libraries(couplings PRIVATE raylib OpenMP::OpenMP_CXX)
 if(OpenMP_Found)
   target_link_libraries(makemonotile PRIVATE OpenMP::OpenMP_CXX)
 endif()
+
 if(MONOTILE_VISUAL)
   include(FetchContent)
   set(FETCHCONTENT_QUIET FALSE)
