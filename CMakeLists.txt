@@ -7,10 +7,11 @@ set(CMAKE_CXX_STANDARD 26)
 
 add_compile_options(-w "$<$<CONFIG:release>:-O3;-march=native>")
 
-include_directories(include external/eigen-5.0.1 external/kdtree)
+include_directories(include external/eigen-5.0.1 external/kdtree
+                    external/cxxopts)
 
 find_package(OpenMP)
-if(${OpenMP_Found})
+if(OpenMP_Found)
   message("Found OpenMP")
 endif()
 find_package(BLAS COMPONENTS openmp)
@@ -36,7 +37,6 @@ elseif(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
 else()
   message(STATUS "LTO is not supported: ${output}")
 endif()
-find_package(HDF5 REQUIRED COMPONENTS C HL)
 
 set_property(
   TARGET makemonotile PROPERTY COMPILE_OPTIONS -Wall -Wextra -Wpedantic
