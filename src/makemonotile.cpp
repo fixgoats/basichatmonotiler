@@ -428,21 +428,32 @@ Matrix2Xd filterpts(const Matrix3Xd& pts) {
 
 } // namespace
 int main(int argc, char* argv[]) {
-  cxxopts::Options options("Dynamic Simulations", "bleh");
-  options.add_options()("l,level", "Number of metatile iterations",
-                        cxxopts::value<u64>())(
-      "w,window", "Draw generated section of tiling")(
-      "o,output", "Point output",
-      cxxopts::value<std::string>()->default_value("monopts.txt"));
+  cxxopts::Options options("makemonotile",
+                           "Create a section of the hat monotile tiling, based "
+                           "on the code developed by Craig S. Kaplan et al. "
+                           "at: https://github.com/isohedral/hatviz");
+
+  options.add_options()("h,help", "Show this help text")(
+      "l,level", "Number of metatile iterations", cxxopts::value<u64>())(
+      "w,window", "Draw generated section of tiling"
+#ifndef MONOTILE_VISUAL
+                  ". Disabled, compile with -DMONOTILE_VISUAL to enable"
+#endif // !MONOTILE_VISUAL
+      )("o,output", "Point output",
+        cxxopts::value<std::string>()->default_value("monopts.txt"));
   cxxopts::ParseResult result;
 
   try {
     result = options.parse(argc, argv);
   } catch (const std::exception& exc) {
-    std::cerr << "Exception: " << exc.what() << std::endl;
+    std::cout << options.help() << std::endl;
     return EXIT_FAILURE;
   }
 
+  if (static_cast<bool>(result["h"].count())) {
+    std::cout << options.help() << std::endl;
+    exit(0);
+  }
   u64 n_iters = 0;
   if (static_cast<bool>(result["l"].count())) {
     n_iters = result["l"].as<u64>();
