@@ -434,12 +434,16 @@ int main(int argc, char* argv[]) {
                            "at: https://github.com/isohedral/hatviz");
 
   options.add_options()("h,help", "Show this help text")(
-      "l,level", "Number of metatile iterations", cxxopts::value<u64>())(
-      "w,window", "Draw generated section of tiling"
+      "l,level", "Number of metatile iterations.", cxxopts::value<u64>())(
+      "p,points", "Draw points."
 #ifndef MONOTILE_VISUAL
-                  ". Disabled, compile with -DMONOTILE_VISUAL to enable"
+                  ". Disabled, compile with -DMONOTILE_VISUAL to enable."
 #endif // !MONOTILE_VISUAL
-      )("o,output", "Point output",
+                  )("t,tiles", "Draw tiles"
+#ifndef MONOTILE_VISUAL
+                              ". Disabled, compile with -DMONOTILE_VISUAL to enable."
+#endif // !MONOTILE_VISUAL
+                              )("o,output", "Point output.",
         cxxopts::value<std::string>()->default_value("monopts.txt"));
   cxxopts::ParseResult result;
 
@@ -491,7 +495,18 @@ int main(int argc, char* argv[]) {
   }
 
   const auto points = tree_to_hats(tiles[0]);
-  if (result["w"].as<bool>()) {
+  Matrix2Xd unique_pts = filterpts(points);
+  std::string fname = result["o"].as<std::string>();
+  std::ofstream outfile(fname);
+
+  for (s64 i = 0; i < unique_pts.cols(); ++i) {
+    outfile << std::format("{}", unique_pts(0, i)) << ' '
+            << std::format("{}", unique_pts(1, i)) << '\n';
+  }
+  outfile.close();
+  std::cout << "Wrote " << unique_pts.cols() << " points to file: " << fname
+            << '\n';
+  if (result["p"].as<bool>() || result["t"].as<bool>()) {
 #ifndef MONOTILE_VISUAL
     std::cout
         << "Executable is not built with raylib, so no output is shown. This "
@@ -522,38 +537,35 @@ int main(int argc, char* argv[]) {
       s32 min_of_wh = std::min(width, height);
       BeginDrawing();
       ClearBackground(WHITE);
-      for (s32 i = 0; i < points.cols() / 13; ++i) {
-        for (s32 j = 0; j < 13; ++j) {
-          DrawLineEx(
-              {static_cast<f32>(to_screen_isotropic(
-                   points(0, i * 13 + j), exmin, max_of_exey, min_of_wh)),
-               static_cast<f32>(to_screen_isotropic(
-                   points(1, i * 13 + j), eymin, max_of_exey, min_of_wh))},
-              {static_cast<f32>(
-                   to_screen_isotropic(points(0, i * 13 + (j + 1) % 13), exmin,
-                                       max_of_exey, min_of_wh)),
-               static_cast<f32>(
-                   to_screen_isotropic(points(1, i * 13 + (j + 1) % 13), eymin,
-                                       max_of_exey, min_of_wh))},
-              4.0, BLACK);
+      if (result["t"].as<bool>()) {
+        for (s32 i = 0; i < points.cols() / 13; ++i) {
+          for (s32 j = 0; j < 13; ++j) {
+            DrawLineEx(
+                {static_cast<f32>(to_screen_isotropic(
+                     points(0, i * 13 + j), exmin, max_of_exey, min_of_wh)),
+                 static_cast<f32>(to_screen_isotropic(
+                     points(1, i * 13 + j), eymin, max_of_exey, min_of_wh))},
+                {static_cast<f32>(
+                     to_screen_isotropic(points(0, i * 13 + (j + 1) % 13), exmin,
+                                         max_of_exey, min_of_wh)),
+                 static_cast<f32>(
+                     to_screen_isotropic(points(1, i * 13 + (j + 1) % 13), eymin,
+                                         max_of_exey, min_of_wh))},
+                4.0, BLACK);
+          }
         }
       }
-
+      if (result["p"].as<bool>()) {
+        for (int i = 0; i < unique_pts.cols(); ++i) {
+          DrawCircle(to_screen_isotropic(
+          unique_pts(0, i), exmin, max_of_exey, min_of_wh), to_screen_isotropic(
+          unique_pts(1, i), eymin, max_of_exey, min_of_wh), 4, RED);
+        }
+      }
       EndDrawing();
     }
     CloseWindow();
 #endif // MONOTILE_VISUAL
   }
-  Matrix2Xd unique_pts = filterpts(points);
-  std::string fname = result["o"].as<std::string>();
-  std::ofstream outfile(fname);
-
-  for (s64 i = 0; i < unique_pts.cols(); ++i) {
-    outfile << std::format("{}", unique_pts(0, i)) << ' '
-            << std::format("{}", unique_pts(1, i)) << '\n';
-  }
-  outfile.close();
-  std::cout << "Wrote " << unique_pts.cols() << " points to file: " << fname
-            << '\n';
   return 0;
 }

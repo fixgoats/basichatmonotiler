@@ -5,7 +5,7 @@ project(basichatmonotile)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 26)
 
-add_compile_options(-w "$<$<CONFIG:release>:-O3;-march=native>")
+add_compile_options(-w "$<$<CONFIG:release>:-O3>")
 
 include_directories(include external/eigen-5.0.1 external/kdtree
                     external/cxxopts)
