@@ -2,3 +2,4 @@ build/
 debug/
 release/
 .cache
+.idea/
