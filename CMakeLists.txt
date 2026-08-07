@@ -20,7 +20,8 @@ if(BLAS_FOUND)
   set(EIGEN_USE_BLAS)
 endif()
 
-add_executable(makemonotile src/makemonotile.cpp)
+add_executable(makemonotile src/makemonotile.cpp
+        include/affine.h)
 
 option(MONOTILE_VISUAL "Compile with Raylib" OFF)
 if(MONOTILE_VISUAL)
@@ -67,3 +68,4 @@ if(MONOTILE_VISUAL)
   FetchContent_MakeAvailable(raylib)
   target_link_libraries(makemonotile PRIVATE raylib)
 endif()
+add_executable(newtiler src/maketilefamily.cpp)

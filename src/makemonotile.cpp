@@ -1,9 +1,8 @@
-#include "Eigen/Dense"
+#include "affine.h"
 #include "kdtree.h"
 #if MONOTILE_VISUAL
 #include "raylib.h"
 #endif // MONOTILE_VISUAL
-#include "typedefs.h"
 #include <cmath>
 #include <cstddef>
 #include <cxxopts.hpp>
@@ -71,88 +70,6 @@ static const std::vector<std::vector<size_t>> RULES{{0},
                                                     {3, 4, 0, 3}};
 
 namespace {
-constexpr Matrix3d sixth_rot(u64 i) {
-  switch (i) {
-  case 0:
-    return Matrix3d::Identity();
-  case 1:
-    return (Matrix3d() << 0.5, -sqrt3 / 2., 0., sqrt3 / 2., 0.5, 0., 0., 0., 1.)
-        .finished();
-  case 2:
-    return (Matrix3d() << -0.5, -sqrt3 / 2., 0., sqrt3 / 2., -0.5, 0., 0., 0.,
-            1.)
-        .finished();
-  case 3:
-    return (Matrix3d() << -1., 0., 0., 0., -1., 0., 0., 0., 1.).finished();
-  case 4:
-    return (Matrix3d() << -0.5, sqrt3 / 2., 0., -sqrt3 / 2., -0.5, 0., 0., 0.,
-            1.)
-        .finished();
-  case 5:
-    return (Matrix3d() << 0.5, sqrt3 / 2., 0., -sqrt3 / 2., 0.5, 0., 0., 0., 1.)
-        .finished();
-  default:
-    return sixth_rot(i % 6);
-  }
-}
-
-constexpr Matrix3d transl2(Vector2d v) {
-  return (Matrix3d() << 1., 0., v[0], 0., 1., v[1], 0., 0., 1.).finished();
-}
-
-constexpr Matrix3d transl3(Vector3d v) {
-  return (Matrix3d() << 1., 0., v[0], 0., 1., v[1], 0., 0., 1.).finished();
-}
-
-constexpr Matrix3d rot_about(Vector3d v, u64 ang) {
-  return Matrix3d{transl3(v) * (sixth_rot(ang) * transl3(-v))};
-}
-
-constexpr Matrix3d from_seg(Vector3d p, Vector3d q) {
-  return (Matrix3d() << q[0] - p[0], p[1] - q[1], p[0], q[1] - p[1],
-          q[0] - p[0], p[1], 0., 0., 1.)
-      .finished();
-}
-
-constexpr Matrix3d aff_inv(Matrix3d aff) {
-  Matrix2d mat_part =
-      (Matrix2d() << aff(0, 0), aff(0, 1), aff(1, 0), aff(1, 1)).finished();
-  Matrix2d mat_part_inv = mat_part.inverse();
-  Vector2d transl_part = -mat_part_inv * Vector2d{aff(0, 2), aff(1, 2)};
-  return (Matrix3d() << mat_part_inv(0, 0), mat_part_inv(0, 1), transl_part[0],
-          mat_part_inv(1, 0), mat_part_inv(1, 1), transl_part[1], 0., 0., 1.)
-      .finished();
-}
-
-constexpr Matrix3d match_segs(Vector3d p1, Vector3d q1, Vector3d p2,
-                              Vector3d q2) {
-  return Matrix3d{from_seg(p2, q2) * (aff_inv(from_seg(p1, q1)))};
-}
-
-constexpr Matrix3d translate_by(Matrix3d aff, Vector2d v) {
-  aff(0, 2) += v[0];
-  aff(1, 2) += v[1];
-  return aff;
-}
-
-Vector3d intersection(Vector3d p1, Vector3d q1, Vector3d p2, Vector3d q2) {
-  const f64 d =
-      (q2[1] - p2[1]) * (q1[0] - p1[0]) - (q2[0] - p2[0]) * (q1[1] - p1[1]);
-  const f64 u_a = ((q2.x() - p2.x()) * (p1.y() - p2.y()) -
-                   (q2.y() - p2.y()) * (p1.x() - p2.x())) /
-                  d;
-  return (Vector3d() << p1.x() + u_a * (q1.x() - p1.x()),
-          p1.y() + u_a * (q1.y() - p1.y()), 1.)
-      .finished();
-}
-
-constexpr Vector3d affsub(Vector3d v, Vector3d u) {
-  return Vector3d{v[0] - u[0], v[1] - u[1], 1.};
-}
-
-constexpr Vector3d affadd(Vector3d v, Vector3d u) {
-  return Vector3d{v[0] + u[0], v[1] + u[1], 1.};
-}
 
 template <class... Ts>
 struct Overloads : Ts... {
@@ -439,12 +356,12 @@ int main(int argc, char* argv[]) {
 #ifndef MONOTILE_VISUAL
                   ". Disabled, compile with -DMONOTILE_VISUAL to enable."
 #endif // !MONOTILE_VISUAL
-                  )("t,tiles", "Draw tiles"
+      )("t,tiles", "Draw tiles"
 #ifndef MONOTILE_VISUAL
-                              ". Disabled, compile with -DMONOTILE_VISUAL to enable."
+                   ". Disabled, compile with -DMONOTILE_VISUAL to enable."
 #endif // !MONOTILE_VISUAL
-                              )("o,output", "Point output.",
-        cxxopts::value<std::string>()->default_value("monopts.txt"));
+        )("o,output", "Point output.",
+          cxxopts::value<std::string>()->default_value("monopts.txt"));
   cxxopts::ParseResult result;
 
   try {
@@ -546,20 +463,22 @@ int main(int argc, char* argv[]) {
                  static_cast<f32>(to_screen_isotropic(
                      points(1, i * 13 + j), eymin, max_of_exey, min_of_wh))},
                 {static_cast<f32>(
-                     to_screen_isotropic(points(0, i * 13 + (j + 1) % 13), exmin,
-                                         max_of_exey, min_of_wh)),
+                     to_screen_isotropic(points(0, i * 13 + (j + 1) % 13),
+                                         exmin, max_of_exey, min_of_wh)),
                  static_cast<f32>(
-                     to_screen_isotropic(points(1, i * 13 + (j + 1) % 13), eymin,
-                                         max_of_exey, min_of_wh))},
+                     to_screen_isotropic(points(1, i * 13 + (j + 1) % 13),
+                                         eymin, max_of_exey, min_of_wh))},
                 4.0, BLACK);
           }
         }
       }
       if (result["p"].as<bool>()) {
         for (int i = 0; i < unique_pts.cols(); ++i) {
-          DrawCircle(to_screen_isotropic(
-          unique_pts(0, i), exmin, max_of_exey, min_of_wh), to_screen_isotropic(
-          unique_pts(1, i), eymin, max_of_exey, min_of_wh), 4, RED);
+          DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
+                                         min_of_wh),
+                     to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
+                                         min_of_wh),
+                     4, RED);
         }
       }
       EndDrawing();
