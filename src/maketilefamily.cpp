@@ -39,6 +39,8 @@ enum class Label : u8 {
   Psi = 7,
   Gamma = 8,
   Null = 9,
+  Mys1 = 10,
+  Mys2 = 11,
 };
 
 constexpr std::array<Label, 9> LABELS{
@@ -75,23 +77,14 @@ constexpr std::array<std::array<Label, 8>, 9> SUPER_RULES = {
 // ['Psi','Delta','Xi','Phi','Sigma','Pi','Phi','Gamma'], 		'Xi' :
 // ['Psi','Delta','Pi','Phi','Sigma','Psi','Phi','Gamma'], 		'Pi' :
 
-struct Shape {
+struct Node {
+  std::vector<std::shared_ptr<Node>> children;
   Matrix3d transform;
   Quad quad;
   Label lab;
-};
-
-struct Node {
-  std::array<std::shared_ptr<Node>, 9> children;
-  std::array<std::shared_ptr<Node>, 2> mystics;
-  Shape shape{};
 
   Node() = default;
-  Node(Shape sh) : shape{sh} {}
-  Node(Shape sh, Shape& m1, Shape& m2)
-      : mystics{std::shared_ptr<Node>(new Node(m1)),
-                std::shared_ptr<Node>(new Node(m2))},
-        shape{sh} {}
+  Node(Matrix3d tr, Quad q, Label label) : transform{tr}, quad{q}, lab{label} {}
 };
 
 struct Tree {
@@ -181,7 +174,7 @@ constexpr std::array<Edge, 13> edges{{
 }};
 
 void iter_trees(std::array<Tree, 9> trees) {
-  const Quad ref = trees[static_cast<u8>(Label::Delta)].root->shape.quad;
+  const Quad ref = trees[static_cast<u8>(Label::Delta)].root->quad;
   f64 total_ang = 0;
   Matrix3d rot = Matrix3d::Identity();
 
@@ -199,6 +192,22 @@ void iter_trees(std::array<Tree, 9> trees) {
       transform = reflect_y(transform);
     }
   }
+  // 	const ret = {};
+  //
+  // 	for( const [lab, subs] of Object.entries( super_rules ) ) {
+  // 		const sup = new Meta();
+  // 		for( let idx = 0; idx < 8; ++idx ) {
+  // 			if( subs[idx] == 'null' ) {
+  // 				continue;
+  // 			}
+  // 			sup.addChild( sys[subs[idx]], Ts[idx] );
+  // 		}
+  // 		sup.quad = super_quad;
+  //
+  // 		ret[lab] = sup;
+  // 	}
+  //
+  // 	return ret;
 }
 // function buildSupertiles( sys )
 // {
@@ -252,22 +261,6 @@ void iter_trees(std::array<Tree, 9> trees) {
 // ), 		transPt( Ts[3], quad[2] ), 		transPt( Ts[0],
 // quad[1] ) ];
 //
-// 	const ret = {};
-//
-// 	for( const [lab, subs] of Object.entries( super_rules ) ) {
-// 		const sup = new Meta();
-// 		for( let idx = 0; idx < 8; ++idx ) {
-// 			if( subs[idx] == 'null' ) {
-// 				continue;
-// 			}
-// 			sup.addChild( sys[subs[idx]], Ts[idx] );
-// 		}
-// 		sup.quad = super_quad;
-//
-// 		ret[lab] = sup;
-// 	}
-//
-// 	return ret;
 // }
 int main(int argc, char* argv[]) {
   cxxopts::Options options("makemonotile",
@@ -313,24 +306,21 @@ int main(int argc, char* argv[]) {
   keys(all, 1) = tile(all, 5);
   keys(all, 2) = tile(all, 7);
   keys(all, 3) = tile(all, 11);
-  Shape mystic1{.transform = Matrix3d::Identity(), .quad = {}, .lab = {}};
-  Shape mystic2{
-      .transform = translate_by3(affrot(M_PI / 6), tile(all, 8)),
-      .quad = {},
-      .lab = {},
-  };
-  auto mystic = std::make_shared<Node>(Shape{.transform = Matrix3d::Identity(),
-                                             .quad = keys,
-                                             .lab = Label::Gamma},
-                                       mystic1, mystic2);
+  Node mystic1(Matrix3d::Identity(), {}, Label::Mys1);
+  Node mystic2(translate_by3(affrot(M_PI / 6), tile(all, 8)), {}, Label::Mys2);
   std::array<Tree, 9> categories{};
   for (u32 i = 0; i < 8; ++i) {
     categories[i] =
-        Tree(std::make_shared<Node>(Shape{.transform = Matrix3d::Identity(),
-                                          .quad = keys,
-                                          .lab = static_cast<Label>(i)}));
+        Tree(std::make_shared<Node>(Node(Matrix3d::Identity(),
+                                          keys,
+                                          static_cast<Label>(i)));
   }
-  categories[8] = Tree(mystic);
+  Node gamma{.children = {std::shared_ptr<Node>{&mystic1},
+                          std::shared_ptr<Node>{&mystic2}},
+             .transform = Matrix3d::Identity(),
+             .quad = keys,
+             .lab = Label::Gamma};
+  categories[8] = Tree{.root = std::shared_ptr<Node>(&gamma)};
 }
 
 // function buildSpectreBase( curved )
