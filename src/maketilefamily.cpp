@@ -3,6 +3,7 @@
 #include "Eigen/Dense"
 #include "affine.h"
 #include "kdtree.h"
+
 #if MONOTILE_VISUAL
 #include "raylib.h"
 #endif // MONOTILE_VISUAL
@@ -23,9 +24,63 @@ typedef Eigen::Matrix<f64, 3, 4> Quad;
 typedef Eigen::Matrix<f64, 3, 14> Tile;
 typedef std::variant<Quad, Tile> shape_var_t;
 
+#ifndef NDEBUG
+#define ASSERT(condition, message)                                             \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+      std::cerr << "Assertion `" #condition "` failed in " << __FILE__         \
+                << " line " << __LINE__ << ": " << message << std::endl;       \
+      std::terminate();                                                        \
+    }                                                                          \
+  } while (false)
+#else
+#define ASSERT(condition, message)                                             \
+  do {                                                                         \
+  } while (false)
+#endif
+
+// inline void my_assert(bool condition, std::string message) {
+//   if (!condition) {
+//       std::cerr << "Assertion `" #condition "` failed in " << __FILE__ \
+//                 << " line " << __LINE__ << ": " << message << std::endl; \
+//       std::terminate(); \
+//
+//   }
+// }
+
 enum class Len : bool {
   a,
   b,
+};
+
+template <class T, size_t Cap>
+struct SmallArr : std::array<T, Cap> {
+  size_t size;
+
+  using iter = T*;
+  using citer = const T*;
+
+  constexpr SmallArr() = default;
+  template <class... Args>
+  consteval SmallArr(Args&&... args)
+    requires(std::is_same_v<std::common_type_t<Args...>, T>)
+      : std::array<T, Cap>{std::forward<Args>(args)...}, size{sizeof...(Args)} {
+  }
+  constexpr SmallArr(size_t s) : size{s}, std::array<T, Cap>{} {}
+
+  [[nodiscard]] constexpr T operator[](auto i) const {
+    ASSERT(i < size, "Attempted out of bounds access.");
+    return this[i];
+  }
+  [[nodiscard]] constexpr T& operator[](auto i) {
+    ASSERT(i < size, "Attempted out of bounds access.");
+    return this[i];
+  }
+
+  constexpr citer cbegin() const { return this->data(); }
+  constexpr citer cend() const { return this->data() + size; }
+  constexpr iter begin() const { return this->data(); }
+  constexpr iter end() const { return this->data() + size; }
 };
 
 enum class Label : u8 {
@@ -47,7 +102,7 @@ constexpr std::array<Label, 9> LABELS{
     Label::Delta, Label::Theta, Label::Lambda, Label::Xi,    Label::Pi,
     Label::Sigma, Label::Phi,   Label::Psi,    Label::Gamma,
 };
-constexpr std::array<std::array<Label, 8>, 9> SUPER_RULES = {
+constexpr std::array<SmallArr<Label, 8>, 9> SUPER_RULES = {
     {{Label::Xi, Label::Delta, Label::Xi, Label::Phi, Label::Sigma, Label::Pi,
       Label::Phi, Label::Gamma},
      {Label::Psi, Label::Delta, Label::Pi, Label::Phi, Label::Sigma, Label::Pi,
@@ -64,8 +119,8 @@ constexpr std::array<std::array<Label, 8>, 9> SUPER_RULES = {
       Label::Phi, Label::Gamma},
      {Label::Psi, Label::Delta, Label::Psi, Label::Phi, Label::Sigma,
       Label::Psi, Label::Phi, Label::Gamma},
-     {Label::Pi, Label::Delta, Label::Null, Label::Theta, Label::Sigma,
-      Label::Xi, Label::Phi, Label::Gamma}}};
+     {Label::Pi, Label::Delta, Label::Theta, Label::Sigma, Label::Xi,
+      Label::Phi, Label::Gamma}}};
 
 ;
 // :
@@ -85,6 +140,9 @@ struct Node {
 
   Node() = default;
   Node(Matrix3d tr, Quad q, Label label) : transform{tr}, quad{q}, lab{label} {}
+  Node(const std::vector<std::shared_ptr<Node>> ch, Matrix3d tr, Quad q,
+       Label label)
+      : children{ch}, transform{tr}, quad{q}, lab{label} {}
 };
 
 struct Tree {
@@ -191,6 +249,10 @@ void iter_trees(std::array<Tree, 9> trees) {
     for (auto& transform : transforms) {
       transform = reflect_y(transform);
     }
+  }
+  std::array<std::shared_ptr<Node>, 9> temp{};
+  for (u32 i = 0; i < 9; ++i) {
+    temp[i] = std::make_shared<Node>(Matrix3d::)
   }
   // 	const ret = {};
   //
@@ -310,17 +372,14 @@ int main(int argc, char* argv[]) {
   Node mystic2(translate_by3(affrot(M_PI / 6), tile(all, 8)), {}, Label::Mys2);
   std::array<Tree, 9> categories{};
   for (u32 i = 0; i < 8; ++i) {
-    categories[i] =
-        Tree(std::make_shared<Node>(Node(Matrix3d::Identity(),
-                                          keys,
-                                          static_cast<Label>(i)));
+    categories[i] = Tree(std::make_shared<Node>(
+        Node(Matrix3d::Identity(), keys, static_cast<Label>(i))));
   }
-  Node gamma{.children = {std::shared_ptr<Node>{&mystic1},
-                          std::shared_ptr<Node>{&mystic2}},
-             .transform = Matrix3d::Identity(),
-             .quad = keys,
-             .lab = Label::Gamma};
-  categories[8] = Tree{.root = std::shared_ptr<Node>(&gamma)};
+  Node gamma{{std::shared_ptr<Node>{&mystic1}, std::shared_ptr<Node>{&mystic2}},
+             Matrix3d::Identity(),
+             keys,
+             Label::Gamma};
+  categories[8] = Tree{std::shared_ptr<Node>(&gamma)};
 }
 
 // function buildSpectreBase( curved )
