@@ -22,7 +22,7 @@
 
 typedef Eigen::Matrix<f64, 3, 4> Quad;
 typedef Eigen::Matrix<f64, 3, 14> Tile;
-typedef std::variant<Quad, Tile> shape_var_t;
+// typedef std::variant<Quad, Tile> shape_var_t;
 
 #ifndef NDEBUG
 #define ASSERT(condition, message)                                             \
@@ -57,10 +57,11 @@ template <class T, size_t Cap>
 struct SmallArr : std::array<T, Cap> {
   size_t size;
 
-  using iter = T*;
+  using iter = T const*;
   using citer = const T*;
 
   constexpr SmallArr() = default;
+
   template <class... Args>
   consteval SmallArr(Args&&... args)
     requires(std::is_same_v<std::common_type_t<Args...>, T>)
@@ -70,11 +71,29 @@ struct SmallArr : std::array<T, Cap> {
 
   [[nodiscard]] constexpr T operator[](auto i) const {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this[i];
+    return this->data()[i];
   }
-  [[nodiscard]] constexpr T& operator[](auto i) {
+  [[nodiscard]] constexpr const T& operator[](auto i) {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this[i];
+    return this->data()[i];
+  }
+
+  [[nodiscard]] T& operator[](auto i) {
+    ASSERT(i < size, "Attempted out of bounds access.");
+    return this->data()[i];
+  }
+
+  constexpr void push_back(T x) {
+    ASSERT(size < Cap, "Pushing back would exceed capacity.");
+    size += 1;
+    this->data()[size] = x;
+  }
+
+  template <class... Args>
+  constexpr void emplace_back(Args&&... args) {
+    ASSERT(size < Cap, "Pushing back would exceed capacity.");
+    size += 1;
+    this->data()[size] = T{std::forward<Args>(args)...};
   }
 
   constexpr citer cbegin() const { return this->data(); }
@@ -93,9 +112,6 @@ enum class Label : u8 {
   Phi = 6,
   Psi = 7,
   Gamma = 8,
-  Null = 9,
-  Mys1 = 10,
-  Mys2 = 11,
 };
 
 constexpr std::array<Label, 9> LABELS{
@@ -133,16 +149,16 @@ constexpr std::array<SmallArr<Label, 8>, 9> SUPER_RULES = {
 // ['Psi','Delta','Pi','Phi','Sigma','Psi','Phi','Gamma'], 		'Pi' :
 
 struct Node {
-  std::vector<std::shared_ptr<Node>> children;
-  Matrix3d transform;
-  Quad quad;
-  Label lab;
+  SmallArr<std::pair<std::shared_ptr<Node>, Matrix3d>, 8> children;
+  std::shared_ptr<Quad> quad;
+  // Label lab;
 
   Node() = default;
-  Node(Matrix3d tr, Quad q, Label label) : transform{tr}, quad{q}, lab{label} {}
-  Node(const std::vector<std::shared_ptr<Node>> ch, Matrix3d tr, Quad q,
-       Label label)
-      : children{ch}, transform{tr}, quad{q}, lab{label} {}
+  // Node(Matrix3d tr, Quad* q, Label label)
+  //     : transform{tr}, quad{q}, lab{label} {}
+  Node(const SmallArr<std::pair<std::shared_ptr<Node>, Matrix3d>, 8>& ch,
+       Quad* q)
+      : children{ch}, quad{q} {}
 };
 
 struct Tree {
@@ -232,27 +248,48 @@ constexpr std::array<Edge, 13> edges{{
 }};
 
 void iter_trees(std::array<Tree, 9> trees) {
-  const Quad ref = trees[static_cast<u8>(Label::Delta)].root->quad;
+  const Quad* ref = trees[static_cast<u8>(Label::Delta)].root->quad.get();
   f64 total_ang = 0;
   Matrix3d rot = Matrix3d::Identity();
 
+  Quad tquad{};
   std::array<Matrix3d, 8> transforms{};
   transforms[0] = Matrix3d::Identity();
   for (u32 i = 0; i < 7; ++i) {
     total_ang += T_RULES[i].ang;
     if (T_RULES[i].ang != 0) {
       rot = affrot(total_ang);
+      tquad = rot * (*ref);
     }
-    const Vector3d ttt =
-        affsub(transforms[i] * ref(all, T_RULES[i].i), ref(all, T_RULES[i].j));
+    const Vector3d ttt = affsub(transforms[i] * (*ref)(all, T_RULES[i].i),
+                                tquad(all, T_RULES[i].j));
     transforms[i + 1] = translate_by3(rot, ttt);
-    for (auto& transform : transforms) {
-      transform = reflect_y(transform);
-    }
   }
+  for (auto& transform : transforms) {
+    transform = reflect_y(transform);
+  }
+
+  auto super_quad = std::make_shared<Quad>();
+  (*super_quad)(all, 0) = transforms[6] * (*ref)(all, 2);
+  (*super_quad)(all, 1) = transforms[5] * (*ref)(all, 1);
+  (*super_quad)(all, 2) = transforms[3] * (*ref)(all, 2);
+  (*super_quad)(all, 3) = transforms[0] * (*ref)(all, 2);
+  // transPt( Ts[6], quad[2] ),
+  // transPt( Ts[5], quad[1] ),
+  // transPt( Ts[3], quad[2] ),
+  // transPt( Ts[0], quad[1] ) ];
   std::array<std::shared_ptr<Node>, 9> temp{};
   for (u32 i = 0; i < 9; ++i) {
-    temp[i] = std::make_shared<Node>(Matrix3d::)
+    auto new_node = std::make_shared<Node>();
+    for (u32 j = 0; j < SUPER_RULES[i].size; ++j) {
+      new_node->children.push_back(
+          {trees[static_cast<u8>(SUPER_RULES[i][j])].root, transforms[j]});
+    }
+    new_node->quad = super_quad;
+    temp[i] = new_node;
+  }
+  for (int i = 0; i < 9; ++i) {
+    trees[i] = temp[i];
   }
   // 	const ret = {};
   //
@@ -368,18 +405,76 @@ int main(int argc, char* argv[]) {
   keys(all, 1) = tile(all, 5);
   keys(all, 2) = tile(all, 7);
   keys(all, 3) = tile(all, 11);
-  Node mystic1(Matrix3d::Identity(), {}, Label::Mys1);
-  Node mystic2(translate_by3(affrot(M_PI / 6), tile(all, 8)), {}, Label::Mys2);
+  // Node mystic1{};
+  // Node mystic2{};
+  // mystic1.quad = std::shared_ptr<Quad>(&keys);
+  // mystic2.quad = std::shared_ptr<Quad>(&keys);
   std::array<Tree, 9> categories{};
   for (u32 i = 0; i < 8; ++i) {
-    categories[i] = Tree(std::make_shared<Node>(
-        Node(Matrix3d::Identity(), keys, static_cast<Label>(i))));
+    categories[i] = Tree{};
+    categories[i].root->quad = std::shared_ptr<Quad>(&keys);
   }
-  Node gamma{{std::shared_ptr<Node>{&mystic1}, std::shared_ptr<Node>{&mystic2}},
-             Matrix3d::Identity(),
-             keys,
-             Label::Gamma};
-  categories[8] = Tree{std::shared_ptr<Node>(&gamma)};
+
+  categories[8].root->children.push_back({{}, Matrix3d::Identity()});
+  categories[8].root->children.push_back(
+      {{}, translate_by3(affrot(M_PI / 6), tile(all, 8))});
+  categories[8].root->quad = std::shared_ptr<Quad>(&keys);
+
+  s32 width = 800;
+  s32 height = 800;
+  SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE |
+                 FLAG_WINDOW_TRANSPARENT);
+  InitWindow(width, height, "raylib test");
+
+  SetTargetFPS(10);
+  // std::cout << "number of points: " << points.cols() << '\n';
+  // f64 xmin = points(0, all).minCoeff();
+  // f64 xmax = points(0, all).maxCoeff();
+  // f64 ymin = points(1, all).minCoeff();
+  // f64 ymax = points(1, all).maxCoeff();
+  // f64 exmin = xmin - 0.05 * (xmax - xmin);
+  // f64 eymin = ymin - 0.05 * (ymax - ymin);
+  // f64 exmax = xmax + 0.05 * (xmax - xmin);
+  // f64 eymax = ymax + 0.05 * (ymax - ymin);
+  // f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
+  while (!WindowShouldClose()) {
+    width = GetScreenWidth();
+    height = GetScreenHeight();
+    s32 min_of_wh = std::min(width, height);
+    BeginDrawing();
+    ClearBackground(WHITE);
+    // if (result["t"].as<bool>()) {
+    //   for (s32 i = 0; i < points.cols() / 13; ++i) {
+    //     for (s32 j = 0; j < 13; ++j) {
+    //       DrawLineEx(
+    //           {static_cast<f32>(to_screen_isotropic(
+    //                points(0, i * 13 + j), exmin, max_of_exey, min_of_wh)),
+    //            static_cast<f32>(to_screen_isotropic(
+    //                points(1, i * 13 + j), eymin, max_of_exey, min_of_wh))},
+    //           {static_cast<f32>(
+    //                to_screen_isotropic(points(0, i * 13 + (j + 1) % 13),
+    //                exmin,
+    //                                    max_of_exey, min_of_wh)),
+    //            static_cast<f32>(
+    //                to_screen_isotropic(points(1, i * 13 + (j + 1) % 13),
+    //                eymin,
+    //                                    max_of_exey, min_of_wh))},
+    //           4.0, BLACK);
+    //     }
+    //   }
+    // }
+    // if (result["p"].as<bool>()) {
+    //   for (int i = 0; i < unique_pts.cols(); ++i) {
+    //     DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
+    //                                    min_of_wh),
+    //                to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
+    //                                    min_of_wh),
+    //                4, RED);
+    //   }
+    // }
+    EndDrawing();
+  }
+  CloseWindow();
 }
 
 // function buildSpectreBase( curved )
