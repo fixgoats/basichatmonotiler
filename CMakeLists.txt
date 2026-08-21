@@ -5,7 +5,7 @@ project(basichatmonotile)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 26)
 
-add_compile_options(-w "$<$<CONFIG:release>:-O3>")
+add_compile_options("$<$<CONFIG:release>:-O3>")
 
 include_directories(include external/eigen-5.0.1 external/kdtree
         external/cxxopts)
@@ -42,9 +42,9 @@ else ()
 endif ()
 
 set_property(
-        TARGET makemonotile PROPERTY COMPILE_OPTIONS -Wall -Wextra -Wpedantic
+        TARGET makemonotile newtiler PROPERTY COMPILE_OPTIONS -Wall -Wextra -Wpedantic
         "$<$<CONFIG:debug>:-fsanitize=address;-ggdb3>")
-set_property(TARGET makemonotile
+set_property(TARGET makemonotile newtiler
         PROPERTY LINK_OPTIONS "$<$<CONFIG:debug>:-fsanitize=address>")
 
 if (OpenMP_Found)
