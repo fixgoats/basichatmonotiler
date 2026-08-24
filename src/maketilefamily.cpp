@@ -88,9 +88,9 @@ struct SmallArr : std::array<T, Cap> {
     return this->data()[0];
   }
 
-  [[nodiscard]] T& back (auto i) {
+  [[nodiscard]] T& back(auto i) {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[size-1];
+    return this->data()[size - 1];
   }
 
   [[nodiscard]] constexpr T front(auto i) const {
@@ -98,9 +98,9 @@ struct SmallArr : std::array<T, Cap> {
     return this->data()[0];
   }
 
-  [[nodiscard]] constexpr T back () const {
+  [[nodiscard]] constexpr T back() const {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[size-1];
+    return this->data()[size - 1];
   }
 
   constexpr void push_back(T x) {
@@ -199,7 +199,7 @@ struct TNode {
   std::shared_ptr<TNode> rotate_and_match(Matrix3d t) {
     auto ret = std::make_shared<TNode>();
     ret->transform = t * transform;
-    ret->quad = quad;
+    ret->quad = t * quad;
     return ret;
     // std::shared_ptr<Quad> = std::make_shared<Quad>()
   }
@@ -346,9 +346,26 @@ void iter_t_trees(std::array<TTree, 2>& trees) {
   auto smeta = std::make_shared<TNode>();
   smeta->children.push_back(trees[1].root);
   for (const auto& rule : T_RULES) {
-    Matrix3d transform = affrot(rule.ang)
+    Matrix3d transform = affrot(rule.ang);
+    if (rule.singcomp) {
+      auto ret = std::make_shared<TNode>();
+      ret->transform = t * transform;
+      ret->quad = t * quad;
+      return ret;
+
+      trees[0].root->rotate_and_match();
+    }
   }
 }
+// rotateAndMatch(T, qidx, P) {
+//   const ret = new Meta();
+//   ret.geoms = this.geoms.map(g = > g.rotateAndMatch(T, -1));
+//   ret.quad = this.quad.map(p = > transAB(T, p));
+//   if (qidx >= 0) {
+//     ret.translateInPlace(psub(P, ret.quad[qidx]));
+//   }
+//   return ret;
+// }
 
 // function buildSupertiles( sys )
 // {
