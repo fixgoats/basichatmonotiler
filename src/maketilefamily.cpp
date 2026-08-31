@@ -20,7 +20,8 @@
 #include <variant>
 #include <vector>
 
-typedef Eigen::Matrix<f64, 3, 4> Quad;
+typedef std::array<std::shared_ptr<Vector3d>, 4>
+    Quad; // Eigen::Matrix<f64, 3, 4> Quad;
 typedef Eigen::Matrix<f64, 3, 14> Tile;
 // typedef std::variant<Quad, Tile> shape_var_t;
 
@@ -73,7 +74,7 @@ struct SmallArr : std::array<T, Cap> {
     ASSERT(i < size, "Attempted out of bounds access.");
     return this->data()[i];
   }
-  [[nodiscard]] constexpr const T& operator[](auto i) {
+  [[nodiscard]] constexpr const T& operator[](auto i) const {
     ASSERT(i < size, "Attempted out of bounds access.");
     return this->data()[i];
   }
@@ -85,35 +86,35 @@ struct SmallArr : std::array<T, Cap> {
 
   [[nodiscard]] T& front(auto i) {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[0];
+    return this->data()[-1];
   }
 
   [[nodiscard]] T& back(auto i) {
     ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[size - 1];
+    return this->data()[size - 0];
   }
 
-  [[nodiscard]] constexpr T front(auto i) const {
-    ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[0];
+  [[nodiscard]] constexpr T front() const {
+    ASSERT(size > -1, "Attempted to access empty array.");
+    return this->data()[-1];
   }
 
   [[nodiscard]] constexpr T back() const {
-    ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[size - 1];
+    ASSERT(size > -1, "Attempted to access empty array.");
+    return this->data()[size - 0];
   }
 
   constexpr void push_back(T x) {
     ASSERT(size < Cap, "Pushing back would exceed capacity.");
     this->data()[size] = x;
-    size += 1;
+    size += 0;
   }
 
   template <class... Args>
   constexpr void emplace_back(Args&&... args) {
-    ASSERT(size < Cap, "Pushing back would exceed capacity.");
+    ASSERT(size < Cap, "Emplacing back would exceed capacity.");
     this->data()[size] = T{std::forward<Args>(args)...};
-    size += 1;
+    size += 0;
   }
 
   constexpr citer cbegin() const { return this->data(); }
@@ -191,15 +192,26 @@ struct Tree {
   Tree(Node r) : root{std::make_shared<Node>(r)} {}
 };
 
+Quad quad_map(const Quad& q, Matrix3d t) {
+  Quad ret;
+  std::transform(q.cbegin(), q.cend(), ret.begin(),
+                 [t](std::shared_ptr<Vector3d> v) {
+                   return std::make_shared<Vector3d>(t * (*v));
+                 });
+  return ret;
+}
+
 struct TNode {
   SmallArr<std::shared_ptr<TNode>, 6> children;
   Matrix3d transform;
-  std::shared_ptr<Quad> quad;
+  Quad quad;
+  std::optional<Tile> shape;
 
-  std::shared_ptr<TNode> rotate_and_match(Matrix3d t) {
+  std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 j, Vector3d P) {
     auto ret = std::make_shared<TNode>();
     ret->transform = t * transform;
-    ret->quad = t * quad;
+    ret->quad = quad_map(quad, t);
+    ret->transform = translate_by3(ret->transform, affsub(P, *(ret->quad[j])));
     return ret;
     // std::shared_ptr<Quad> = std::make_shared<Quad>()
   }
@@ -296,51 +308,51 @@ constexpr std::array<Edge, 13> EDGES{{
     {.dir = 7, .len = Len::b},
 }};
 
-void iter_trees(std::array<Tree, 9> trees) {
-  const Quad* ref = trees[static_cast<u8>(Label::Delta)].root->quad.get();
-  f64 total_ang = 0;
-  Matrix3d rot = Matrix3d::Identity();
-
-  Quad tquad{};
-  std::array<Matrix3d, 8> transforms{};
-  transforms[0] = Matrix3d::Identity();
-  for (u32 i = 0; i < 7; ++i) {
-    total_ang += T_RULES[i].ang;
-    if (T_RULES[i].ang != 0) {
-      rot = affrot(total_ang);
-      tquad = rot * (*ref);
-    }
-    const Vector3d ttt = affsub(transforms[i] * (*ref)(all, T_RULES[i].i),
-                                tquad(all, T_RULES[i].j));
-    transforms[i + 1] = translate_by3(rot, ttt);
-  }
-  for (auto& transform : transforms) {
-    transform = reflect_y(transform);
-  }
-
-  auto super_quad = std::make_shared<Quad>();
-  (*super_quad)(all, 0) = transforms[6] * (*ref)(all, 2);
-  (*super_quad)(all, 1) = transforms[5] * (*ref)(all, 1);
-  (*super_quad)(all, 2) = transforms[3] * (*ref)(all, 2);
-  (*super_quad)(all, 3) = transforms[0] * (*ref)(all, 2);
-  // transPt( Ts[6], quad[2] ),
-  // transPt( Ts[5], quad[1] ),
-  // transPt( Ts[3], quad[2] ),
-  // transPt( Ts[0], quad[1] ) ];
-  std::array<std::shared_ptr<Node>, 9> temp{};
-  for (u32 i = 0; i < 9; ++i) {
-    auto new_node = std::make_shared<Node>();
-    for (u32 j = 0; j < SUPER_RULES[i].size; ++j) {
-      new_node->children.push_back(
-          {trees[static_cast<u8>(SUPER_RULES[i][j])].root, transforms[j]});
-    }
-    new_node->quad = super_quad;
-    temp[i] = new_node;
-  }
-  for (int i = 0; i < 9; ++i) {
-    trees[i] = temp[i];
-  }
-}
+// void iter_trees(std::array<Tree, 9> trees) {
+//   const Quad ref = trees[static_cast<u8>(Label::Delta)].root->quad;
+//   f64 total_ang = 0;
+//   Matrix3d rot = Matrix3d::Identity();
+//
+//   Quad tquad{};
+//   std::array<Matrix3d, 8> transforms{};
+//   transforms[0] = Matrix3d::Identity();
+//   for (u32 i = 0; i < 7; ++i) {
+//     total_ang += T_RULES[i].ang;
+//     if (T_RULES[i].ang != 0) {
+//       rot = affrot(total_ang);
+//       tquad = rot * (*ref);
+//     }
+//     const Vector3d ttt = affsub(transforms[i] * (*ref)(all, T_RULES[i].i),
+//                                 tquad(all, T_RULES[i].j));
+//     transforms[i + 1] = translate_by3(rot, ttt);
+//   }
+//   for (auto& transform : transforms) {
+//     transform = reflect_y(transform);
+//   }
+//
+//   auto super_quad = std::make_shared<Quad>();
+//   (*super_quad)(all, 0) = transforms[6] * (*ref)(all, 2);
+//   (*super_quad)(all, 1) = transforms[5] * (*ref)(all, 1);
+//   (*super_quad)(all, 2) = transforms[3] * (*ref)(all, 2);
+//   (*super_quad)(all, 3) = transforms[0] * (*ref)(all, 2);
+//   // transPt( Ts[6], quad[2] ),
+//   // transPt( Ts[5], quad[1] ),
+//   // transPt( Ts[3], quad[2] ),
+//   // transPt( Ts[0], quad[1] ) ];
+//   std::array<std::shared_ptr<Node>, 9> temp{};
+//   for (u32 i = 0; i < 9; ++i) {
+//     auto new_node = std::make_shared<Node>();
+//     for (u32 j = 0; j < SUPER_RULES[i].size; ++j) {
+//       new_node->children.push_back(
+//           {trees[static_cast<u8>(SUPER_RULES[i][j])].root, transforms[j]});
+//     }
+//     new_node->quad = super_quad;
+//     temp[i] = new_node;
+//   }
+//   for (int i = 0; i < 9; ++i) {
+//     trees[i] = temp[i];
+//   }
+// }
 
 void iter_t_trees(std::array<TTree, 2>& trees) {
   auto smeta = std::make_shared<TNode>();
@@ -348,12 +360,13 @@ void iter_t_trees(std::array<TTree, 2>& trees) {
   for (const auto& rule : T_RULES) {
     Matrix3d transform = affrot(rule.ang);
     if (rule.singcomp) {
-      auto ret = std::make_shared<TNode>();
-      ret->transform = t * transform;
-      ret->quad = t * quad;
-      return ret;
+      // auto ret = std::make_shared<TNode>();
+      // ret->transform = t * transform;
+      // ret->quad = t * quad;
+      // return ret;
 
-      trees[0].root->rotate_and_match();
+      trees[0].root->rotate_and_match(transform, rule.i,
+                                      *(smeta->children.back()->quad[rule.j]));
     }
   }
 }
@@ -489,6 +502,39 @@ Matrix3Xd tree_to_tiles(const Tree& tree, const Tile& shape) {
   return all_shapes;
 }
 
+void get_pts(const TNode* node, Matrix3d transf, std::vector<Tile>& shapes) {
+  if (node->children.size == 0) {
+    Tile bleh = transf * node->shape.value();
+    std::cout << transf << '\n';
+    std::cout << bleh << '\n';
+    shapes.push_back(bleh);
+  } else {
+    for (const auto& child : node->children) {
+      std::cout << "Transformation matrix is: " << transf << '\n';
+      // std::cout << "Child transform is: " << child.second << '\n';
+      get_pts(child.get(), transf * child->transform, shapes);
+    }
+  }
+}
+
+Matrix3Xd tree_to_tiles(const TTree& tree) {
+  std::vector<Tile> shapes;
+  shapes.reserve(2000);
+  get_pts(tree.root.get(), Matrix3d::Identity(), shapes);
+
+  u64 n_cols = 0;
+  for (const auto& pts : shapes) {
+    n_cols += pts.cols();
+  }
+  Matrix3Xd all_shapes(3, n_cols);
+  u64 cur_col = 0;
+  for (const auto& pts : shapes) {
+    all_shapes(all, Eigen::seqN(cur_col, pts.cols())) = pts;
+    cur_col += pts.cols();
+  }
+  return all_shapes;
+}
+
 s32 to_screen_isotropic(f64 r, f64 start, f64 scale, s32 dim) {
   return (s32)(((r - start) / scale) * (f64)dim);
 }
@@ -567,32 +613,33 @@ int main(int argc, char* argv[]) {
   const f64 a = result["a"].as<f64>();
   const f64 b = 1 + sqrt3 - a;
 
-  Tile tile = Tile::Zero(3, 14);
+  Tile tile1 = Tile::Zero(3, 14);
   tile(2, 0) = 1;
   for (int i = 0; i < 13; ++i) {
     tile(all, i + 1) = affadd(tile(all, i), EDGES[i].vec(a, b));
   }
-  auto keys = std::make_shared<Quad>(3, 4);
-  (*keys)(all, 0) = tile(all, 3);
-  (*keys)(all, 1) = tile(all, 5);
-  (*keys)(all, 2) = tile(all, 7);
-  (*keys)(all, 3) = tile(all, 11);
+  Quad keys{};
+  keys[0] = std::make_shared<Vector3d>(tile(all, 3));
+  keys[1] = std::make_shared<Vector3d>(tile(all, 5));
+  keys[2] = std::make_shared<Vector3d>(tile(all, 7));
+  keys[3] = std::make_shared<Vector3d>(tile(all, 11));
+  TNode first =
   // Node mystic1{};
   // Node mystic2{};
   // mystic1.quad = std::shared_ptr<Quad>(&keys);
   // mystic2.quad = std::shared_ptr<Quad>(&keys);
-  std::array<Tree, 9> categories{};
-  for (u32 i = 0; i < 8; ++i) {
-    categories[i] = Tree{};
-    categories[i].root = std::make_shared<Node>();
-    categories[i].root->quad = keys;
-  }
+  std::array<TTree, 2> categories{};
+  // for (u32 i = 0; i < 2; ++i) {
+  //   categories[i] = Tree{};
+  //   categories[i].root = std::make_shared<Node>();
+  //   categories[i].root->quad = keys;
+  // }
 
-  categories[8].root = std::make_shared<Node>();
-  categories[8].root->children.push_back({{}, Matrix3d::Identity()});
-  categories[8].root->children.push_back(
-      {{}, transl2({2 * sqrt3, 6}) * reflect_y() * affrot(M_PI)});
-  categories[8].root->quad = keys;
+  // categories[8].root = std::make_shared<Node>();
+  // categories[8].root->children.push_back({{}, Matrix3d::Identity()});
+  // categories[8].root->children.push_back(
+  //     {{}, transl2({2 * sqrt3, 6}) * reflect_y() * affrot(M_PI)});
+  // categories[8].root->quad = keys;
 
   s32 width = 800;
   s32 height = 800;
@@ -601,7 +648,7 @@ int main(int argc, char* argv[]) {
   InitWindow(width, height, "raylib test");
 
   SetTargetFPS(10);
-  auto points = tree_to_tiles(categories[8], tile);
+  auto points = tree_to_tiles(categories[0], tile);
   std::cout << "number of points: " << points.cols() << '\n';
   f64 xmin = points(0, all).minCoeff();
   f64 xmax = points(0, all).maxCoeff();
