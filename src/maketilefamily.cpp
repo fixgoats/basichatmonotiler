@@ -614,21 +614,22 @@ int main(int argc, char* argv[]) {
   const f64 b = 1 + sqrt3 - a;
 
   Tile tile1 = Tile::Zero(3, 14);
-  tile(2, 0) = 1;
+  tile1(2, 0) = 1;
   for (int i = 0; i < 13; ++i) {
-    tile(all, i + 1) = affadd(tile(all, i), EDGES[i].vec(a, b));
+    tile1(all, i + 1) = affadd(tile1(all, i), EDGES[i].vec(a, b));
   }
+  Tile tile2 = reflect_x() * tile1;
+
   Quad keys{};
-  keys[0] = std::make_shared<Vector3d>(tile(all, 3));
-  keys[1] = std::make_shared<Vector3d>(tile(all, 5));
-  keys[2] = std::make_shared<Vector3d>(tile(all, 7));
-  keys[3] = std::make_shared<Vector3d>(tile(all, 11));
+  keys[0] = std::make_shared<Vector3d>(tile1(all, 1));
+  keys[1] = std::make_shared<Vector3d>(tile1(all, 3));
+  keys[2] = std::make_shared<Vector3d>(tile1(all, 9));
+  keys[3] = std::make_shared<Vector3d>(tile1(all, 13));
   TNode first =
-  // Node mystic1{};
-  // Node mystic2{};
-  // mystic1.quad = std::shared_ptr<Quad>(&keys);
-  // mystic2.quad = std::shared_ptr<Quad>(&keys);
-  std::array<TTree, 2> categories{};
+      // Node mystic1{};
+      // Node mystic2{};
+      // mystic2.quad = std::shared_ptr<Quad>(&keys);
+      std::array<TTree, 2> categories{};
   // for (u32 i = 0; i < 2; ++i) {
   //   categories[i] = Tree{};
   //   categories[i].root = std::make_shared<Node>();

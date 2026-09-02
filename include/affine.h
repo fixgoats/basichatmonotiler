@@ -97,6 +97,17 @@ using Eigen::Vector2d, Eigen::Matrix3d, Eigen::Matrix3Xd, Eigen::Vector3d,
   return Matrix3Xd{{-1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
 }
 
+[[nodiscard]] constexpr Matrix3d reflect_x(Matrix3d aff) noexcept {
+  Matrix3d ret = aff;
+  ret(1, 0) *= -1;
+  ret(1, 1) *= -1;
+  return aff;
+}
+
+[[nodiscard]] constexpr Matrix3d reflect_x() noexcept {
+  return Matrix3Xd{{1, 0, 0}, {0, -1, 0}, {0, 0, 1}};
+}
+
 [[nodiscard]] constexpr Vector3d scale(Vector3d v, f64 a) noexcept {
   return {v.x() * a, v.y() * a, 1.0};
 }
