@@ -1,5 +1,3 @@
-//
-// Created by fixgoats on 8/7/26.
 #include "Eigen/Dense"
 #include "affine.h"
 #include "kdtree.h"
@@ -7,6 +5,7 @@
 #if MONOTILE_VISUAL
 #include "raylib.h"
 #endif // MONOTILE_VISUAL
+#include "smallarr.h"
 #include "typedefs.h"
 #include <cmath>
 #include <cstddef>
@@ -22,157 +21,13 @@
 
 typedef std::array<std::shared_ptr<Vector3d>, 4>
     Quad; // Eigen::Matrix<f64, 3, 4> Quad;
-typedef Eigen::Matrix<f64, 3, 14> Tile;
+typedef Eigen::Matrix<f64, 3, 13> Tile;
 // typedef std::variant<Quad, Tile> shape_var_t;
 
-#ifndef NDEBUG
-#define ASSERT(condition, message)                                             \
-  do {                                                                         \
-    if (!(condition)) {                                                        \
-      std::cerr << "Assertion `" #condition "` failed in " << __FILE__         \
-                << " line " << __LINE__ << ": " << message << std::endl;       \
-      std::terminate();                                                        \
-    }                                                                          \
-  } while (false)
-#else
-#define ASSERT(condition, message)                                             \
-  do {                                                                         \
-  } while (false)
-#endif
-
-enum class Len : bool {
+enum class Len : u16 {
   a,
   b,
-};
-
-template <class T, size_t Cap>
-struct SmallArr : std::array<T, Cap> {
-  size_t len;
-
-  struct Iterator {
-    T* m_ptr;
-
-    Iterator& operator++() {
-      this->m_ptr++;
-      return *this;
-    }
-    Iterator& operator--() {
-      this->m_ptr--;
-      return *this;
-    }
-    Iterator operator++(int) {
-      Iterator tmp = *this;
-      this->m_ptr++;
-      return tmp;
-    }
-    Iterator operator--(int) {
-      Iterator tmp = *this;
-      this->m_ptr--;
-      return tmp;
-    }
-    T& operator*() { return *this->m_ptr; }
-    bool operator==(const Iterator& other) const {
-      return this->m_ptr == other.m_ptr;
-    }
-    bool operator!=(const Iterator& other) const {
-      return this->m_ptr != other.m_ptr;
-    }
-  };
-  struct ConstIterator {
-    const T* m_ptr;
-
-    ConstIterator& operator++() {
-      this->m_ptr++;
-      return *this;
-    }
-    ConstIterator& operator--() {
-      this->m_ptr--;
-      return *this;
-    }
-    ConstIterator operator++(int) {
-      Iterator tmp = *this;
-      this->m_ptr++;
-      return tmp;
-    }
-    ConstIterator operator--(int) {
-      Iterator tmp = *this;
-      this->m_ptr--;
-      return tmp;
-    }
-    const T& operator*() { return *this->m_ptr; }
-    bool operator==(const ConstIterator& other) const {
-      return this->m_ptr == other.m_ptr;
-    }
-    bool operator!=(const ConstIterator& other) const {
-      return this->m_ptr != other.m_ptr;
-    }
-  };
-
-  constexpr SmallArr() = default;
-
-  template <class... Args>
-  constexpr SmallArr(Args&&... args)
-    requires(std::is_same_v<std::common_type_t<Args...>, T>)
-      : std::array<T, Cap>{std::forward<Args>(args)...}, len{sizeof...(Args)} {}
-  constexpr SmallArr(size_t s) : len{s}, std::array<T, Cap>{} {}
-
-  [[nodiscard]] constexpr T operator[](auto i) const {
-    ASSERT(i < len, "Attempted out of bounds access.");
-    return this->data()[i];
-  }
-  [[nodiscard]] constexpr const T& operator[](auto i) const {
-    ASSERT(i < len, "Attempted out of bounds access.");
-    return this->data()[i];
-  }
-
-  [[nodiscard]] T& operator[](auto i) {
-    ASSERT(i < len, "Attempted out of bounds access.");
-    return this->data()[i];
-  }
-
-  [[nodiscard]] constexpr T front() const {
-    ASSERT(len > 0, "Attempted to access empty array.");
-    return this->data()[0];
-  }
-
-  [[nodiscard]] T& front() {
-    ASSERT(len > 0, "Attempted to access empty array.");
-    return this->data()[0];
-  }
-
-  [[nodiscard]] constexpr T back() const {
-    ASSERT(len > 0, "Attempted to access empty array.");
-    return this->data()[len - 1];
-  }
-
-  [[nodiscard]] T& back() {
-    ASSERT(len > 0, "Attempted to access empty array.");
-    return this->data()[len - 1];
-  }
-
-  constexpr void push_back(T x) {
-    ASSERT(len < Cap, "Pushing back would exceed capacity.");
-    this->data()[len] = x;
-    len += 1;
-  }
-
-  template <class... Args>
-  constexpr void emplace_back(Args&&... args) {
-    ASSERT(len < Cap, "Emplacing back would exceed capacity.");
-    this->data()[len] = T{std::forward<Args>(args)...};
-    len += 1;
-  }
-
-  [[nodiscard]] ConstIterator cbegin() const {
-    return ConstIterator{this->data()};
-  }
-  [[nodiscard]] ConstIterator cend() const {
-    return ConstIterator{this->data() + this->len};
-  }
-  [[nodiscard]] ConstIterator begin() const { return cbegin(); }
-  [[nodiscard]] ConstIterator end() const { return cend(); }
-  Iterator begin() { return Iterator{this->data()}; }
-  Iterator end() { return Iterator{this->data() + this->len}; }
+  a2,
 };
 
 enum class Label : u8 {
@@ -223,15 +78,15 @@ constexpr std::array<SmallArr<Label, 8>, 9> SUPER_RULES = {
 
 struct Node {
   SmallArr<std::pair<std::shared_ptr<Node>, Matrix3d>, 8> children;
-  std::shared_ptr<Quad> quad;
+  Quad quad;
   // Label lab;
 
-  Node() = default;
-  // Node(Matrix3d tr, Quad* q, Label label)
-  //     : transform{tr}, quad{q}, lab{label} {}
-  Node(const SmallArr<std::pair<std::shared_ptr<Node>, Matrix3d>, 8>& ch,
-       Quad* q)
-      : children{ch}, quad{q} {}
+  // Node() = default;
+  //// Node(Matrix3d tr, Quad* q, Label label)
+  ////     : transform{tr}, quad{q}, lab{label} {}
+  // Node(const SmallArr<std::pair<std::shared_ptr<Node>, Matrix3d>, 8>& ch,
+  //      Quad* q)
+  //     : children{ch}, quad{q} {}
 };
 
 struct Tree {
@@ -265,13 +120,8 @@ struct TNode {
   Quad quad;
   std::optional<Tile> shape;
 
-  ~TNode() {
-    std::cout << "~TNode called\n";
-    std::cout << "Had " << children.len << " children\n";
-  }
   void get_pts(std::vector<Vector3d>& pts, u32 iter_depth = 0) {
     if (shape.has_value()) {
-      std::cout << "Iteration depth: " << iter_depth << std::endl;
       for (const auto& col : shape.value().colwise()) {
         pts.emplace_back(col);
       }
@@ -297,27 +147,19 @@ struct TNode {
 
   std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 i = 0) {
     auto ret = std::make_shared<TNode>();
-    std::cout << "rotate_and_match, " << i << "th/st/nd/rd level";
     for (u32 i = 0; i < children.len; i++) {
       ret->children.push_back(children[i]->rotate_and_match(t, i + 1));
     }
     if (shape.has_value()) {
       ret->shape = t * shape.value();
-      std::cout << "made new tile\n";
     }
     ret->quad = quad_map(quad, t);
-    // std::cout << "q1: " << *ret->quad[0] << '\n';
-    // std::cout << "q2: " << *ret->quad[1] << '\n';
-    // std::cout << "q3: " << *ret->quad[2] << '\n';
-    // std::cout << "q4: " << *ret->quad[3] << '\n';
     return ret;
   }
 
   std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 j, Vector3d P,
                                           u32 i = 0) {
     auto ret = std::make_shared<TNode>();
-    std::cout << "rotate_and_match, " << i << "th/st/nd/rd level";
-    // ret->transform = t * transform;
 
     for (u32 i = 0; i < children.len; i++) {
       ret->children.push_back(children[i]->rotate_and_match(t, i + 1));
@@ -328,10 +170,6 @@ struct TNode {
     }
     ret->quad = quad_map(quad, t);
     ret->translate_in_place(affsub(P, *(ret->quad[j])));
-    // std::cout << "q1: " << *ret->quad[0] << '\n';
-    // std::cout << "q2: " << *ret->quad[1] << '\n';
-    // std::cout << "q3: " << *ret->quad[2] << '\n';
-    // std::cout << "q4: " << *ret->quad[3] << '\n';
     return ret;
   }
 };
@@ -383,15 +221,6 @@ struct TRule {
   bool singcomp;
 };
 
-// constexpr std::array<TRule, 6> T_RULES = {{
-//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
-//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
-//     {.ang = 0, .i = 1, .j = 1, .singcomp = true},
-//     {.ang = 0, .i = 2, .j = 2, .singcomp = false},
-//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
-//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
-// }};
-
 constexpr std::array<TRule, 6> T_RULES = {{
     {.ang = pi / 3, .i = 2, .j = 0, .singcomp = false},
     {.ang = 2 * pi / 3, .i = 2, .j = 0, .singcomp = false},
@@ -436,11 +265,15 @@ struct Edge {
       return scale(DIRS[dir], b);
       break;
     }
+    case Len::a2: {
+      return scale(DIRS[dir], 2 * a);
+      break;
+    }
     }
   }
 };
 
-constexpr std::array<Edge, 13> EDGES{{
+constexpr std::array<Edge, 12> EDGES{{
     {.dir = 0, .len = Len::a},
     {.dir = 2, .len = Len::a},
     {.dir = 11, .len = Len::b},
@@ -450,11 +283,30 @@ constexpr std::array<Edge, 13> EDGES{{
     {.dir = 5, .len = Len::b},
     {.dir = 3, .len = Len::b},
     {.dir = 6, .len = Len::a},
-    {.dir = 8, .len = Len::a},
-    {.dir = 8, .len = Len::a},
+    {.dir = 8, .len = Len::a2},
     {.dir = 10, .len = Len::a},
     {.dir = 7, .len = Len::b},
 }};
+
+inline const Matrix3Xd spectre =
+    (Matrix3Xd(3, 13) << 0, 1, 1.5, 2.366025403784439, 2.366025403784439,
+     3.366025403784439, 3.366025403784439, 3, 2.1339845962155614,
+     1.6339745962155614, -0.3660254037844386, -0.8660254037844386, 0, 0,
+     -0.8660254037844386, -0.36602540378443865, 0.6339745962155614,
+     0.6339745962155614, 1.5, 2, 1.5, 2.366025403784439, 2.366025403784439, 1.5,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+        .finished();
+
+inline std::array<Tree, 9> init_trees() {
+  std::array<Tree, 9> cats{};
+  Quad q{std::make_shared<Vector3d>(spectre(all, 3)),
+         std::make_shared<Vector3d>(spectre(all, 5)),
+         std::make_shared<Vector3d>(spectre(all, 7)),
+         std::make_shared<Vector3d>(spectre(all, 10))};
+  for (u32 i = 0; i < 8; ++i) {
+    cats[i].root = std::make_shared<Node>(Node{{}, q});
+  }
+}
 
 // void iter_trees(std::array<Tree, 9> trees) {
 //   const Quad ref = trees[static_cast<u8>(Label::Delta)].root->quad;
@@ -500,48 +352,6 @@ constexpr std::array<Edge, 13> EDGES{{
 //   for (int i = 0; i < 9; ++i) {
 //     trees[i] = temp[i];
 //   }
-// }
-
-void iter_t_trees(std::array<TTree, 2>& trees) {
-  auto smeta = std::make_shared<TNode>();
-  smeta->children.emplace_back(trees[0].root);
-  for (const auto& rule : T_RULES) {
-    Matrix3d transform = affrot(rule.ang);
-    if (rule.singcomp) {
-      smeta->children.emplace_back(trees[1].root->rotate_and_match(
-          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
-    } else {
-      smeta->children.emplace_back(trees[0].root->rotate_and_match(
-          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
-    }
-  }
-  smeta->quad = {smeta->children[1]->quad[3], smeta->children[2]->quad[0],
-                 smeta->children[4]->quad[3], smeta->children[6]->quad[0]};
-  for (const auto& v : smeta->quad) {
-    std::cout << "smeta p: " << *v << "\n";
-  }
-
-  std::shared_ptr<TNode> cmeta = std::make_shared<TNode>();
-
-  for (u32 i = 0; i < smeta->children.len - 1; ++i) {
-    cmeta->children.emplace_back(smeta->children[i]);
-  }
-
-  cmeta->quad = smeta->quad;
-  for (const auto& v : smeta->quad) {
-    std::cout << "cmeta p: " << *v << "\n";
-  }
-  trees[0].root = smeta;
-  trees[1].root = cmeta;
-}
-// rotateAndMatch(T, qidx, P) {
-//   const ret = new Meta();
-//   ret.geoms = this.geoms.map(g = > g.rotateAndMatch(T, -1));
-//   ret.quad = this.quad.map(p = > transAB(T, p));
-//   if (qidx >= 0) {
-//     ret.translateInPlace(psub(P, ret.quad[qidx]));
-//   }
-//   return ret;
 // }
 
 // function buildSupertiles( sys )
@@ -598,6 +408,37 @@ void iter_t_trees(std::array<TTree, 2>& trees) {
 //
 // }
 
+void iter_t_trees(std::array<TTree, 2>& trees) {
+  auto smeta = std::make_shared<TNode>();
+  smeta->children.emplace_back(trees[0].root);
+  for (const auto& rule : T_RULES) {
+    Matrix3d transform = affrot(rule.ang);
+    if (rule.singcomp) {
+      smeta->children.emplace_back(trees[1].root->rotate_and_match(
+          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
+    } else {
+      smeta->children.emplace_back(trees[0].root->rotate_and_match(
+          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
+    }
+  }
+  smeta->quad = {smeta->children[1]->quad[3], smeta->children[2]->quad[0],
+                 smeta->children[4]->quad[3], smeta->children[6]->quad[0]};
+  for (const auto& v : smeta->quad) {
+  }
+
+  std::shared_ptr<TNode> cmeta = std::make_shared<TNode>();
+
+  for (u32 i = 0; i < smeta->children.len - 1; ++i) {
+    cmeta->children.emplace_back(smeta->children[i]);
+  }
+
+  cmeta->quad = smeta->quad;
+  for (const auto& v : smeta->quad) {
+  }
+  trees[0].root = smeta;
+  trees[1].root = cmeta;
+}
+
 Matrix2Xd filterpts(const Matrix3Xd& pts) {
   std::vector<u8> uniques(pts.cols(), 1);
 
@@ -621,7 +462,7 @@ Matrix2Xd filterpts(const Matrix3Xd& pts) {
     }
   }
   u64 num_uniques = std::accumulate(uniques.begin(), uniques.end(), 0);
-  Eigen::Matrix2Xd unique_pts(2, num_uniques);
+  Matrix2Xd unique_pts(2, num_uniques);
   s64 count = 0;
   for (s64 i = 0; i < pts.cols(); ++i) {
     if (static_cast<bool>(uniques[i])) {
@@ -709,40 +550,6 @@ std::array<Color, 14> colors{DARKGRAY,   MAROON,    ORANGE, DARKGREEN, DARKBLUE,
                              LIME,       BLUE,      VIOLET, BROWN};
 #endif
 
-// function buildSupertiles(sys) {
-//   const sing = sys['H8'];
-//   const comp = sys['H7'];
-//
-//   const quad = sys['H8'].quad;
-//
-//   const smeta = new Meta();
-//   const rules =
-//       [[PI / 3, 2, 0, false], [2 * PI / 3, 2, 0, false], [0, 1, 1, true],
-//        [-2 * PI / 3, 2, 2, false], [-PI / 3, 2, 0, false],[0, 2, 0, false]];
-//
-//   smeta.addChild(sing);
-//   for (let r of rules) {
-//     if (r[3]) {
-//       smeta.addChild(comp.rotateAndMatch(
-//           trot(r[0]), r[1],smeta.geoms[smeta.geoms.length - 1].quad[r[2]]));
-//     } else {
-//       smeta.addChild(sing.rotateAndMatch(
-//           trot(r[0]), r[1],smeta.geoms[smeta.geoms.length - 1].quad[r[2]]));
-//     }
-//   }
-//
-//   smeta.quad = [
-//     smeta.geoms[1].quad[3], smeta.geoms[2].quad[0],smeta.geoms[4].quad[3],
-//     smeta.geoms[6].quad[0]
-//   ];
-//
-//   const cmeta = new Meta();
-//   cmeta.geoms = smeta.geoms.slice(0, smeta.geoms.length - 1);
-//   cmeta.quad = smeta.quad;
-//
-//   return {'H8' : smeta, 'H7' : cmeta};
-// }
-
 int main(int argc, char* argv[]) {
   cxxopts::Options options("makemonotile",
                            "Create a section of the hat monotile tiling, based "
@@ -779,11 +586,11 @@ int main(int argc, char* argv[]) {
   const f64 a = result["a"].as<f64>();
   const f64 b = 1 + sqrt3 - a;
 
-  Tile tile1 = Tile::Zero(3, 14);
-  tile1(2, all) = Eigen::VectorXd::Ones(14);
+  Tile tile1 = Tile::Zero(3, 13);
+  tile1(2, all) = Eigen::VectorXd::Ones(13);
 
   std::cout << tile1(all, 0) << std::endl;
-  for (int i = 0; i < 13; ++i) {
+  for (int i = 0; i < 12; ++i) {
     tile1(all, i + 1) = affadd(tile1(all, i), EDGES[i].vec(a, b));
     std::cout << tile1(all, i + 1) << std::endl;
   }
@@ -793,7 +600,7 @@ int main(int argc, char* argv[]) {
   keys[0] = std::make_shared<Vector3d>(tile1(all, 1));
   keys[1] = std::make_shared<Vector3d>(tile1(all, 3));
   keys[2] = std::make_shared<Vector3d>(tile1(all, 9));
-  keys[3] = std::make_shared<Vector3d>(tile1(all, 13));
+  keys[3] = std::make_shared<Vector3d>(tile1(all, 12));
   std::array<TTree, 2> categories{};
   for (const auto& k : keys) {
     std::cout << "quad p: " << *k << std::endl;
@@ -801,7 +608,7 @@ int main(int argc, char* argv[]) {
 
   categories[0].root = std::make_shared<TNode>(TNode({}, keys, tile1));
   ; // std::make_shared<TNode>(TNode{{node1}, keys, {}});
-  tile2 = transl3(affsub(tile1(all, 11), tile2(all, 5))) * tile2;
+  tile2 = transl3(affsub(tile1(all, 10), tile2(all, 5))) * tile2;
   std::cout << "Tile 1:\n";
   std::cout << tile1 << '\n';
   std::cout << "Tile 2:\n";
@@ -823,45 +630,21 @@ int main(int argc, char* argv[]) {
   //     {{}, transl2({2 * sqrt3, 6}) * reflect_y() * affrot(M_PI)});
   // categories[8].root->quad = keys;
 
-  for (u64 i = 0; i < result["l"].as<u64>(); ++i) {
+  u32 level = result["l"].as<u64>();
+  for (u64 i = 0; i < level; ++i) {
     iter_t_trees(categories);
     std::cout << "bleh\n";
   }
-  s32 width = 800;
-  s32 height = 800;
-  SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE |
-                 FLAG_WINDOW_TRANSPARENT);
-  InitWindow(width, height, "raylib test");
-
-  SetTargetFPS(10);
   auto points = categories[0].get_pts();
-  f64 xmin = points(0, all).minCoeff();
-  f64 xmax = points(0, all).maxCoeff();
-  f64 ymin = points(1, all).minCoeff();
-  f64 ymax = points(1, all).maxCoeff();
-  f64 exmin = xmin - 0.05 * (xmax - xmin);
-  f64 eymin = ymin - 0.05 * (ymax - ymin);
-  f64 exmax = xmax + 0.05 * (xmax - xmin);
-  f64 eymax = ymax + 0.05 * (ymax - ymin);
-  f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
-  u32 cat_index = 0;
-  while (!WindowShouldClose()) {
-    width = GetScreenWidth();
-    height = GetScreenHeight();
-    s32 min_of_wh = std::min(width, height);
+  auto unique_pts = filterpts(points);
+  if (result["t"].count() > 0 || result["p"].count() > 0) {
+    s32 width = 800;
+    s32 height = 800;
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE |
+                   FLAG_WINDOW_TRANSPARENT);
+    InitWindow(width, height, "raylib test");
 
-    if (IsKeyPressed(KEY_ONE)) {
-      cat_index = 0;
-      points = categories[0].get_pts();
-    }
-    if (IsKeyPressed(KEY_TWO)) {
-      cat_index = 1;
-      points = categories[1].get_pts();
-    }
-    if (IsKeyPressed(KEY_N)) {
-      iter_t_trees(categories);
-      points = categories[cat_index].get_pts();
-    }
+    SetTargetFPS(10);
     f64 xmin = points(0, all).minCoeff();
     f64 xmax = points(0, all).maxCoeff();
     f64 ymin = points(1, all).minCoeff();
@@ -871,38 +654,82 @@ int main(int argc, char* argv[]) {
     f64 exmax = xmax + 0.05 * (xmax - xmin);
     f64 eymax = ymax + 0.05 * (ymax - ymin);
     f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
-    BeginDrawing();
-    ClearBackground(WHITE);
-    if (result["t"].as<bool>()) {
-      for (s32 i = 0; i < points.cols() / 14; ++i) {
-        for (s32 j = 0; j < 14; ++j) {
-          // std::cout << "Attempting to draw point: {" << points(0, i * 14 + j)
-          //           << ", " << points(0, i * 14 + j) << "}\n";
-          DrawLineEx(
-              {static_cast<f32>(to_screen_isotropic(
-                   points(0, i * 14 + j), exmin, max_of_exey, min_of_wh)),
-               static_cast<f32>(to_screen_isotropic(
-                   points(1, i * 14 + j), eymin, max_of_exey, min_of_wh))},
-              {static_cast<f32>(
-                   to_screen_isotropic(points(0, i * 14 + (j + 1) % 14), exmin,
-                                       max_of_exey, min_of_wh)),
-               static_cast<f32>(
-                   to_screen_isotropic(points(1, i * 14 + (j + 1) % 14), eymin,
-                                       max_of_exey, min_of_wh))},
-              4.0, colors[i % 14]);
+    u32 cat_index = 0;
+    f32 linewidth = 6.0 * std::exp(-0.3 * level);
+    while (!WindowShouldClose()) {
+      width = GetScreenWidth();
+      height = GetScreenHeight();
+      s32 min_of_wh = std::min(width, height);
+
+      if (IsKeyPressed(KEY_ONE)) {
+        cat_index = 0;
+        points = categories[0].get_pts();
+        unique_pts = filterpts(points);
+      }
+      if (IsKeyPressed(KEY_TWO)) {
+        cat_index = 1;
+        points = categories[1].get_pts();
+        unique_pts = filterpts(points);
+      }
+      if (IsKeyPressed(KEY_N)) {
+        iter_t_trees(categories);
+        level += 1;
+        points = categories[cat_index].get_pts();
+        unique_pts = filterpts(points);
+        linewidth = 4.0 * std::exp(-0.2 * level);
+      }
+      f64 xmin = points(0, all).minCoeff();
+      f64 xmax = points(0, all).maxCoeff();
+      f64 ymin = points(1, all).minCoeff();
+      f64 ymax = points(1, all).maxCoeff();
+      f64 exmin = xmin - 0.05 * (xmax - xmin);
+      f64 eymin = ymin - 0.05 * (ymax - ymin);
+      f64 exmax = xmax + 0.05 * (xmax - xmin);
+      f64 eymax = ymax + 0.05 * (ymax - ymin);
+      f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
+      BeginDrawing();
+      ClearBackground(WHITE);
+      if (result["t"].as<bool>()) {
+        for (s32 i = 0; i < points.cols() / 13; ++i) {
+          for (s32 j = 0; j < 13; ++j) {
+            DrawLineEx(
+                {static_cast<f32>(to_screen_isotropic(
+                     points(0, i * 13 + j), exmin, max_of_exey, min_of_wh)),
+                 static_cast<f32>(to_screen_isotropic(
+                     points(1, i * 13 + j), eymin, max_of_exey, min_of_wh))},
+                {static_cast<f32>(
+                     to_screen_isotropic(points(0, i * 13 + (j + 1) % 13),
+                                         exmin, max_of_exey, min_of_wh)),
+                 static_cast<f32>(
+                     to_screen_isotropic(points(1, i * 13 + (j + 1) % 13),
+                                         eymin, max_of_exey, min_of_wh))},
+                linewidth, colors[i % 13]);
+          }
         }
       }
-    }
-    if (result["p"].as<bool>()) {
-      for (int i = 0; i < unique_pts.cols(); ++i) {
-        DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
-                                       min_of_wh),
-                   to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
-                                       min_of_wh),
-                   4, RED);
+      if (result["p"].as<bool>()) {
+        for (int i = 0; i < unique_pts.cols(); ++i) {
+          DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
+                                         min_of_wh),
+                     to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
+                                         min_of_wh),
+                     linewidth, RED);
+        }
       }
+      EndDrawing();
     }
-    EndDrawing();
+    CloseWindow();
   }
-  CloseWindow();
+  if (result["o"].count() > 0) {
+    std::string fname = result["o"].as<std::string>();
+    std::ofstream outfile(fname);
+
+    for (s64 i = 0; i < unique_pts.cols(); ++i) {
+      outfile << std::format("{}", unique_pts(0, i)) << ' '
+              << std::format("{}", unique_pts(1, i)) << '\n';
+    }
+    outfile.close();
+    std::cout << "Wrote " << unique_pts.cols() << " points to file: " << fname
+              << '\n';
+  }
 }

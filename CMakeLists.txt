@@ -21,7 +21,8 @@ if (BLAS_FOUND)
 endif ()
 
 add_executable(makemonotile src/makemonotile.cpp
-        include/affine.h)
+        include/affine.h
+        include/smallarr.h)
 add_executable(newtiler src/maketilefamily.cpp)
 
 option(MONOTILE_VISUAL "Compile with Raylib" OFF)
