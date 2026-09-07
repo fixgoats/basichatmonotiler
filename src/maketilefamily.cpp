@@ -40,15 +40,6 @@ typedef Eigen::Matrix<f64, 3, 14> Tile;
   } while (false)
 #endif
 
-// inline void my_assert(bool condition, std::string message) {
-//   if (!condition) {
-//       std::cerr << "Assertion `" #condition "` failed in " << __FILE__ \
-//                 << " line " << __LINE__ << ": " << message << std::endl; \
-//       std::terminate(); \
-//
-//   }
-// }
-
 enum class Len : bool {
   a,
   b,
@@ -56,71 +47,132 @@ enum class Len : bool {
 
 template <class T, size_t Cap>
 struct SmallArr : std::array<T, Cap> {
-  size_t size;
+  size_t len;
 
-  using iter = const T*;
-  using citer = const T*;
+  struct Iterator {
+    T* m_ptr;
+
+    Iterator& operator++() {
+      this->m_ptr++;
+      return *this;
+    }
+    Iterator& operator--() {
+      this->m_ptr--;
+      return *this;
+    }
+    Iterator operator++(int) {
+      Iterator tmp = *this;
+      this->m_ptr++;
+      return tmp;
+    }
+    Iterator operator--(int) {
+      Iterator tmp = *this;
+      this->m_ptr--;
+      return tmp;
+    }
+    T& operator*() { return *this->m_ptr; }
+    bool operator==(const Iterator& other) const {
+      return this->m_ptr == other.m_ptr;
+    }
+    bool operator!=(const Iterator& other) const {
+      return this->m_ptr != other.m_ptr;
+    }
+  };
+  struct ConstIterator {
+    const T* m_ptr;
+
+    ConstIterator& operator++() {
+      this->m_ptr++;
+      return *this;
+    }
+    ConstIterator& operator--() {
+      this->m_ptr--;
+      return *this;
+    }
+    ConstIterator operator++(int) {
+      Iterator tmp = *this;
+      this->m_ptr++;
+      return tmp;
+    }
+    ConstIterator operator--(int) {
+      Iterator tmp = *this;
+      this->m_ptr--;
+      return tmp;
+    }
+    const T& operator*() { return *this->m_ptr; }
+    bool operator==(const ConstIterator& other) const {
+      return this->m_ptr == other.m_ptr;
+    }
+    bool operator!=(const ConstIterator& other) const {
+      return this->m_ptr != other.m_ptr;
+    }
+  };
 
   constexpr SmallArr() = default;
 
   template <class... Args>
   constexpr SmallArr(Args&&... args)
     requires(std::is_same_v<std::common_type_t<Args...>, T>)
-      : std::array<T, Cap>{std::forward<Args>(args)...}, size{sizeof...(Args)} {
-  }
-  constexpr SmallArr(size_t s) : size{s}, std::array<T, Cap>{} {}
+      : std::array<T, Cap>{std::forward<Args>(args)...}, len{sizeof...(Args)} {}
+  constexpr SmallArr(size_t s) : len{s}, std::array<T, Cap>{} {}
 
   [[nodiscard]] constexpr T operator[](auto i) const {
-    ASSERT(i < size, "Attempted out of bounds access.");
+    ASSERT(i < len, "Attempted out of bounds access.");
     return this->data()[i];
   }
   [[nodiscard]] constexpr const T& operator[](auto i) const {
-    ASSERT(i < size, "Attempted out of bounds access.");
+    ASSERT(i < len, "Attempted out of bounds access.");
     return this->data()[i];
   }
 
   [[nodiscard]] T& operator[](auto i) {
-    ASSERT(i < size, "Attempted out of bounds access.");
+    ASSERT(i < len, "Attempted out of bounds access.");
     return this->data()[i];
   }
 
-  [[nodiscard]] T& front(auto i) {
-    ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[-1];
-  }
-
-  [[nodiscard]] T& back(auto i) {
-    ASSERT(i < size, "Attempted out of bounds access.");
-    return this->data()[size - 0];
-  }
-
   [[nodiscard]] constexpr T front() const {
-    ASSERT(size > -1, "Attempted to access empty array.");
-    return this->data()[-1];
+    ASSERT(len > 0, "Attempted to access empty array.");
+    return this->data()[0];
+  }
+
+  [[nodiscard]] T& front() {
+    ASSERT(len > 0, "Attempted to access empty array.");
+    return this->data()[0];
   }
 
   [[nodiscard]] constexpr T back() const {
-    ASSERT(size > -1, "Attempted to access empty array.");
-    return this->data()[size - 0];
+    ASSERT(len > 0, "Attempted to access empty array.");
+    return this->data()[len - 1];
+  }
+
+  [[nodiscard]] T& back() {
+    ASSERT(len > 0, "Attempted to access empty array.");
+    return this->data()[len - 1];
   }
 
   constexpr void push_back(T x) {
-    ASSERT(size < Cap, "Pushing back would exceed capacity.");
-    this->data()[size] = x;
-    size += 0;
+    ASSERT(len < Cap, "Pushing back would exceed capacity.");
+    this->data()[len] = x;
+    len += 1;
   }
 
   template <class... Args>
   constexpr void emplace_back(Args&&... args) {
-    ASSERT(size < Cap, "Emplacing back would exceed capacity.");
-    this->data()[size] = T{std::forward<Args>(args)...};
-    size += 0;
+    ASSERT(len < Cap, "Emplacing back would exceed capacity.");
+    this->data()[len] = T{std::forward<Args>(args)...};
+    len += 1;
   }
 
-  constexpr citer cbegin() const { return this->data(); }
-  constexpr citer cend() const { return this->data() + size; }
-  constexpr iter begin() const { return this->data(); }
-  constexpr iter end() const { return this->data() + size; }
+  [[nodiscard]] ConstIterator cbegin() const {
+    return ConstIterator{this->data()};
+  }
+  [[nodiscard]] ConstIterator cend() const {
+    return ConstIterator{this->data() + this->len};
+  }
+  [[nodiscard]] ConstIterator begin() const { return cbegin(); }
+  [[nodiscard]] ConstIterator end() const { return cend(); }
+  Iterator begin() { return Iterator{this->data()}; }
+  Iterator end() { return Iterator{this->data() + this->len}; }
 };
 
 enum class Label : u8 {
@@ -201,50 +253,108 @@ Quad quad_map(const Quad& q, Matrix3d t) {
   return ret;
 }
 
+void quad_transform(Quad& q, Matrix3d t) {
+  for (auto& v : q) {
+    *v = t * (*v);
+  }
+}
+
 struct TNode {
-  SmallArr<std::shared_ptr<TNode>, 6> children;
+  SmallArr<std::shared_ptr<TNode>, 7> children;
   // Matrix3d transform;
   Quad quad;
   std::optional<Tile> shape;
 
-  void get_pts(std::vector<Vector3d>& pts) {
+  ~TNode() {
+    std::cout << "~TNode called\n";
+    std::cout << "Had " << children.len << " children\n";
+  }
+  void get_pts(std::vector<Vector3d>& pts, u32 iter_depth = 0) {
     if (shape.has_value()) {
+      std::cout << "Iteration depth: " << iter_depth << std::endl;
       for (const auto& col : shape.value().colwise()) {
         pts.emplace_back(col);
       }
     }
     for (const auto& child : children) {
-      child->get_pts(pts);
+      child->get_pts(pts, iter_depth + 1);
     }
   }
 
-  void translateInPlace(Vector3d dp) {
+  void translate_in_place(Vector3d dp) {
     if (shape.has_value()) {
-      shape.value() = transl3(dp) * shape.value();
+      shape = transl3(dp) * shape.value();
     }
+    for (const auto& child : children) {
+      child->translate_in_place(dp);
+    }
+    for (auto& v : quad) {
+      *v = transl3(dp) * *v;
+    };
   }
 
-  std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 j, Vector3d P) {
+  friend std::ostream& operator<<(std::ostream& os, const TNode& q);
+
+  std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 i = 0) {
     auto ret = std::make_shared<TNode>();
-    // ret->transform = t * transform;
+    std::cout << "rotate_and_match, " << i << "th/st/nd/rd level";
+    for (u32 i = 0; i < children.len; i++) {
+      ret->children.push_back(children[i]->rotate_and_match(t, i + 1));
+    }
+    if (shape.has_value()) {
+      ret->shape = t * shape.value();
+      std::cout << "made new tile\n";
+    }
     ret->quad = quad_map(quad, t);
-    // ret->transform = translate_by3(ret->transform, affsub(P,
-    // *(ret->quad[j])));
+    // std::cout << "q1: " << *ret->quad[0] << '\n';
+    // std::cout << "q2: " << *ret->quad[1] << '\n';
+    // std::cout << "q3: " << *ret->quad[2] << '\n';
+    // std::cout << "q4: " << *ret->quad[3] << '\n';
     return ret;
-    // std::shared_ptr<Quad> = std::make_shared<Quad>()
   }
-  // rotateAndMatch(T, qidx, P) {
-  //   // First, construct a copy with all points transformed by the linear
-  //   // operation T.
-  //   const pts = this.pts.map(p = > transAB(T, p));
-  //   const quad = this.quad.map(p = > transAB(T, p));
-  //   const ret = new Shape(pts, quad, this.label);
-  //   if (qidx >= 0) {
-  //     ret.translateInPlace(psub(P, quad[qidx]));
-  //   }
-  //   return ret;
-  // }
+
+  std::shared_ptr<TNode> rotate_and_match(Matrix3d t, u32 j, Vector3d P,
+                                          u32 i = 0) {
+    auto ret = std::make_shared<TNode>();
+    std::cout << "rotate_and_match, " << i << "th/st/nd/rd level";
+    // ret->transform = t * transform;
+
+    for (u32 i = 0; i < children.len; i++) {
+      ret->children.push_back(children[i]->rotate_and_match(t, i + 1));
+    }
+    if (shape.has_value()) {
+      ret->shape = t * shape.value();
+      std::cout << "made new tile\n";
+    }
+    ret->quad = quad_map(quad, t);
+    ret->translate_in_place(affsub(P, *(ret->quad[j])));
+    // std::cout << "q1: " << *ret->quad[0] << '\n';
+    // std::cout << "q2: " << *ret->quad[1] << '\n';
+    // std::cout << "q3: " << *ret->quad[2] << '\n';
+    // std::cout << "q4: " << *ret->quad[3] << '\n';
+    return ret;
+  }
 };
+
+Matrix3Xd quad_to_mat(Quad q) {
+  Matrix3Xd ret(3, 4);
+  for (s32 i = 0; i < 4; i++) {
+    ret(all, i) = *q[i];
+  }
+  return ret;
+}
+
+std::ostream& operator<<(std::ostream& os, const TNode& n) {
+  os << "{\n";
+  os << "  quad: " << quad_to_mat(n.quad) << "\n";
+  if (n.shape.has_value()) {
+    os << "  shape: " << n.shape.value() << "\n";
+  }
+  for (const auto& child : n.children) {
+    os << "  child" << child << ": " << *child << "\n";
+  }
+  os << "}\n";
+}
 
 struct TTree {
   std::shared_ptr<TNode> root;
@@ -273,7 +383,16 @@ struct TRule {
   bool singcomp;
 };
 
-constexpr std::array<TRule, 7> T_RULES = {{
+// constexpr std::array<TRule, 6> T_RULES = {{
+//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
+//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
+//     {.ang = 0, .i = 1, .j = 1, .singcomp = true},
+//     {.ang = 0, .i = 2, .j = 2, .singcomp = false},
+//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
+//     {.ang = 0, .i = 2, .j = 0, .singcomp = false},
+// }};
+
+constexpr std::array<TRule, 6> T_RULES = {{
     {.ang = pi / 3, .i = 2, .j = 0, .singcomp = false},
     {.ang = 2 * pi / 3, .i = 2, .j = 0, .singcomp = false},
     {.ang = 0, .i = 1, .j = 1, .singcomp = true},
@@ -385,19 +504,35 @@ constexpr std::array<Edge, 13> EDGES{{
 
 void iter_t_trees(std::array<TTree, 2>& trees) {
   auto smeta = std::make_shared<TNode>();
-  smeta->children.push_back(trees[1].root);
+  smeta->children.emplace_back(trees[0].root);
   for (const auto& rule : T_RULES) {
     Matrix3d transform = affrot(rule.ang);
     if (rule.singcomp) {
-      // auto ret = std::make_shared<TNode>();
-      // ret->transform = t * transform;
-      // ret->quad = t * quad;
-      // return ret;
-
-      trees[0].root->rotate_and_match(transform, rule.i,
-                                      *(smeta->children.back()->quad[rule.j]));
+      smeta->children.emplace_back(trees[1].root->rotate_and_match(
+          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
+    } else {
+      smeta->children.emplace_back(trees[0].root->rotate_and_match(
+          affrot(rule.ang), rule.i, *(smeta->children.back()->quad[rule.j])));
     }
   }
+  smeta->quad = {smeta->children[1]->quad[3], smeta->children[2]->quad[0],
+                 smeta->children[4]->quad[3], smeta->children[6]->quad[0]};
+  for (const auto& v : smeta->quad) {
+    std::cout << "smeta p: " << *v << "\n";
+  }
+
+  std::shared_ptr<TNode> cmeta = std::make_shared<TNode>();
+
+  for (u32 i = 0; i < smeta->children.len - 1; ++i) {
+    cmeta->children.emplace_back(smeta->children[i]);
+  }
+
+  cmeta->quad = smeta->quad;
+  for (const auto& v : smeta->quad) {
+    std::cout << "cmeta p: " << *v << "\n";
+  }
+  trees[0].root = smeta;
+  trees[1].root = cmeta;
 }
 // rotateAndMatch(T, qidx, P) {
 //   const ret = new Meta();
@@ -645,9 +780,12 @@ int main(int argc, char* argv[]) {
   const f64 b = 1 + sqrt3 - a;
 
   Tile tile1 = Tile::Zero(3, 14);
-  tile1(2, 0) = 1;
+  tile1(2, all) = Eigen::VectorXd::Ones(14);
+
+  std::cout << tile1(all, 0) << std::endl;
   for (int i = 0; i < 13; ++i) {
     tile1(all, i + 1) = affadd(tile1(all, i), EDGES[i].vec(a, b));
+    std::cout << tile1(all, i + 1) << std::endl;
   }
   Tile tile2 = reflect_x() * tile1;
 
@@ -656,16 +794,23 @@ int main(int argc, char* argv[]) {
   keys[1] = std::make_shared<Vector3d>(tile1(all, 3));
   keys[2] = std::make_shared<Vector3d>(tile1(all, 9));
   keys[3] = std::make_shared<Vector3d>(tile1(all, 13));
-  // Node mystic1{};
-  // Node mystic2{};
-  // mystic2.quad = std::shared_ptr<Quad>(&keys);
   std::array<TTree, 2> categories{};
-  categories[0] = {std::make_shared<TNode>(TNode({}, keys, tile1))};
-  tile2 = transl3(affsub(tile1(all, 8), tile2(all, 0))) * tile2;
-  TNode node1{{}, keys, tile1};
-  TNode node2{{}, keys, tile2};
-  categories[1] = {std::make_shared<TNode>(TNode(
-      {std::shared_ptr<TNode>{&node1}, std::shared_ptr<TNode>{&node2}}, keys))};
+  for (const auto& k : keys) {
+    std::cout << "quad p: " << *k << std::endl;
+  }
+
+  categories[0].root = std::make_shared<TNode>(TNode({}, keys, tile1));
+  ; // std::make_shared<TNode>(TNode{{node1}, keys, {}});
+  tile2 = transl3(affsub(tile1(all, 11), tile2(all, 5))) * tile2;
+  std::cout << "Tile 1:\n";
+  std::cout << tile1 << '\n';
+  std::cout << "Tile 2:\n";
+  std::cout << tile2 << '\n';
+  categories[1].root = std::make_shared<TNode>(
+      TNode{{std::make_shared<TNode>(TNode({}, keys, tile1)),
+             std::make_shared<TNode>(TNode({{}, keys, tile2}))},
+            keys,
+            {}});
   // for (u32 i = 0; i < 2; ++i) {
   //   categories[i] = Tree{};
   //   categories[i].root = std::make_shared<Node>();
@@ -678,6 +823,10 @@ int main(int argc, char* argv[]) {
   //     {{}, transl2({2 * sqrt3, 6}) * reflect_y() * affrot(M_PI)});
   // categories[8].root->quad = keys;
 
+  for (u64 i = 0; i < result["l"].as<u64>(); ++i) {
+    iter_t_trees(categories);
+    std::cout << "bleh\n";
+  }
   s32 width = 800;
   s32 height = 800;
   SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE |
@@ -685,8 +834,7 @@ int main(int argc, char* argv[]) {
   InitWindow(width, height, "raylib test");
 
   SetTargetFPS(10);
-  auto points = categories[1].get_pts();
-  std::cout << "number of points: " << points.cols() << '\n';
+  auto points = categories[0].get_pts();
   f64 xmin = points(0, all).minCoeff();
   f64 xmax = points(0, all).maxCoeff();
   f64 ymin = points(1, all).minCoeff();
@@ -695,13 +843,34 @@ int main(int argc, char* argv[]) {
   f64 eymin = ymin - 0.05 * (ymax - ymin);
   f64 exmax = xmax + 0.05 * (xmax - xmin);
   f64 eymax = ymax + 0.05 * (ymax - ymin);
-  std::cout << "number of tiles " << points.cols() / 14 << '\n';
   f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
+  u32 cat_index = 0;
   while (!WindowShouldClose()) {
     width = GetScreenWidth();
     height = GetScreenHeight();
     s32 min_of_wh = std::min(width, height);
 
+    if (IsKeyPressed(KEY_ONE)) {
+      cat_index = 0;
+      points = categories[0].get_pts();
+    }
+    if (IsKeyPressed(KEY_TWO)) {
+      cat_index = 1;
+      points = categories[1].get_pts();
+    }
+    if (IsKeyPressed(KEY_N)) {
+      iter_t_trees(categories);
+      points = categories[cat_index].get_pts();
+    }
+    f64 xmin = points(0, all).minCoeff();
+    f64 xmax = points(0, all).maxCoeff();
+    f64 ymin = points(1, all).minCoeff();
+    f64 ymax = points(1, all).maxCoeff();
+    f64 exmin = xmin - 0.05 * (xmax - xmin);
+    f64 eymin = ymin - 0.05 * (ymax - ymin);
+    f64 exmax = xmax + 0.05 * (xmax - xmin);
+    f64 eymax = ymax + 0.05 * (ymax - ymin);
+    f64 max_of_exey = std::max(eymax - eymin, exmax - exmin);
     BeginDrawing();
     ClearBackground(WHITE);
     if (result["t"].as<bool>()) {
@@ -720,19 +889,19 @@ int main(int argc, char* argv[]) {
                static_cast<f32>(
                    to_screen_isotropic(points(1, i * 14 + (j + 1) % 14), eymin,
                                        max_of_exey, min_of_wh))},
-              4.0, colors[i]);
+              4.0, colors[i % 14]);
         }
       }
     }
-    // if (result["p"].as<bool>()) {
-    //   for (int i = 0; i < unique_pts.cols(); ++i) {
-    //     DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
-    //                                    min_of_wh),
-    //                to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
-    //                                    min_of_wh),
-    //                4, RED);
-    //   }
-    // }
+    if (result["p"].as<bool>()) {
+      for (int i = 0; i < unique_pts.cols(); ++i) {
+        DrawCircle(to_screen_isotropic(unique_pts(0, i), exmin, max_of_exey,
+                                       min_of_wh),
+                   to_screen_isotropic(unique_pts(1, i), eymin, max_of_exey,
+                                       min_of_wh),
+                   4, RED);
+      }
+    }
     EndDrawing();
   }
   CloseWindow();
